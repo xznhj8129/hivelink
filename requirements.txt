@@ -1,0 +1,8 @@
+msgpack
+crcmod
+frogtastic
+frogcot
+froggeolib
+pymavlink
+unavlib
+asyncio
