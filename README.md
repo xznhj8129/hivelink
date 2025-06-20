@@ -18,7 +18,6 @@ Significantly simplified and integrated with my other libraries\
 ## Supported (*soon) Transport Layers:
 - UDP Uni/Multicast
 - Meshtastic
-- MeshCore*
 - APRS*
 - ???
 
@@ -27,15 +26,23 @@ Significantly simplified and integrated with my other libraries\
 - [FrogGeoLib](https://github.com/xznhj8129/froggeolib)
 - [FrogTastic](https://github.com/xznhj8129/frogtastic) (probably will change)
 
-## Communications module:
+## Message definitions
+Messages are described in `message_definitions.csv`. Run `gen_definitions.py` to regenerate
+`message_definitions.json` and the auto generated `message_structure.py` enum tree. Each enum
+represents a message and exposes a `.payload()` helper which validates and orders the fields.
 
-### Usage:
-- datalinks.py defines transport interface
-- nodes.json is your network map
+Example:
+```python
+from message_structure import Messages
 
-### Function:
-- If message is sent throigh Meshtastic, the straight payload is sent as data to the app port, as Meshtastic already provides error checking and routing data such as sender, time, etc.
-- If message is sent through UDP or other type of lower level protocol, payload is wrapped in a more structured packet
+payload = Messages.Testing.System.TEXTMSG.payload(textdata=b"hello")
+```
+
+## Protocol helpers
+`protocol.py` contains helpers to create and parse messages:
+- `encode_message` and `decode_message` work with the message enums and payload lists.
+- `encode_udp_packet` and `decode_udp_packet` wrap messages for raw UDP links.
+- `messageid` / `message_str_from_id` convert between enums and integer IDs.
 
 ##### UDP Packet Structure
 | sync byte | payload length | CRC16 | source id | destination id | payload |
@@ -45,25 +52,34 @@ Significantly simplified and integrated with my other libraries\
 - **links_config.json** is node-specific provides information on it's identities, devices, addresses, keys, etc.
 - **nodes.json** is pre-shared across nodes and provides network mapping, public keys, etc
 
-### Nested MessageID Enum Tree:
+## Datalinks
+`datalinks.py` provides the `DatalinkInterface` which hides the underlying transport.
+It supports Meshtastic and UDP (unicast and multicast). Node information such as IDs and
+IP addresses is loaded from `nodes.json`.
 
-Instead of a flat list, message identifiers are organized in a nested tree structure for ease of programming:
+Basic usage:
+```python
+from datalinks import DatalinkInterface, load_nodes_map
+from message_structure import Messages
+from protocol import encode_message
 
-- **Telemetry:**  
-  - `MessageID.Telemetry.POSITION`  
-  - `MessageID.Telemetry.BATTERY`  
-  - `MessageID.Telemetry.ATTITUDE`
-- **Command:**  
-  - `MessageID.Command.SET_MISSION`  
-  - `MessageID.Command.SET_POSITION`  
-  - `MessageID.Command.PHASE`
-- **Routing:**  
-  - `MessageID.Routing.HEARTBEAT`  
-  - `MessageID.Routing.STATUS`
+nodemap = load_nodes_map()
+link = DatalinkInterface(use_udp=True, my_name="gcs1", my_id=nodemap["gcs1"]["meshid"],
+                         nodemap=nodemap, multicast_group="239.0.0.1", multicast_port=5550)
+link.start()
 
-The `encode_message_id` function packs these components into a single 16-bit integer, and the `decode_message_id` function decodes it back into a tuple `(category, message type, subtype)`.
+payload = Messages.Testing.System.TEXTMSG.payload(textdata=b"hi")
+msg = encode_message(Messages.Testing.System.TEXTMSG, payload)
+link.send(msg, dest="drone1", udp=True)
+```
+Call `link.receive()` to read incoming messages and `link.stop()` when finished.
 
+## Example nodes
+- `test_node.py` – simple terminal chat using multicast or Meshtastic.
+- `test_node_controller.py` – ground station style receiver for telemetry/commands.
+- `test_uav.py` – sends INAV telemetry using `unavlib`.
 
+These demonstrate how the protocol and datalink layers fit together.
 ## Flight Control module:
 
 ### Usage:

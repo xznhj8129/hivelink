@@ -5,12 +5,53 @@ import json
 from typing import Optional, Dict, Any
 import time
 import crcmod
-from protocol import SYNC_BYTE, crc16, encode_udp_packet, decode_udp_packet
+import msgpack
+from frogtastic import MeshtasticClient
+
+
+PROTOCOL_VERSION = 1 
+MAX_MESH_PACKET_SIZE = 220  # Total packet size (bytes)
+SYNC_BYTE = 0xFA
+crc16 = crcmod.predefined.mkCrcFun('crc-ccitt-false')
+    
+# --- UDP Packet Structure Definition ---
+#[SYNC_BYTE, payload length, checksum, source id, destination id, payload]
+
+def encode_udp_packet(source: str, destination: str, payload: bytes) -> bytes:
+    s = bytes(source,'utf-8')
+    d = bytes(destination,'utf-8')
+    checksum = crc16(s + d + payload)
+    plen = len(payload)
+    packet = msgpack.packb([SYNC_BYTE, plen, checksum, s, d, payload])
+    return packet
+
+def decode_udp_packet(packet: bytes) -> dict:
+    data = msgpack.unpackb(packet, use_list=True)
+    if len(data) != 6:  # Minimum: StartByte, Length, Version, BinaryFlags, Routing, Checksum
+        raise ValueError("Protocol Error: Packet length mismatch.")
+        #return None
+    else:
+        syncbyte, length, checksum, source, destination, payload = data
+
+    if syncbyte != SYNC_BYTE:
+        raise ValueError("Protocol Error: Sync byte mismatch")
+        
+    plen = len(payload)
+    if plen!=length:
+        raise ValueError("Protocol Error: Length mismatch")
+
+    # Verify checksum
+    calc_checksum = crc16(source + destination + payload)
+    if calc_checksum != checksum:
+        raise ValueError("Protocol Error: Checksum mismatch.")
+
+    return [source.decode('utf-8'), destination.decode('utf-8'), payload]
 
 class DatalinkInterface:
     def __init__(self, 
                  use_meshtastic: bool = False,
                  use_udp: bool = False,
+                 use_multicast: bool = False,
                  wlan_device: Optional[str] = None,
                  radio_port: Optional[str] = None,
                  meshtastic_dataport: int = 260,
@@ -26,6 +67,7 @@ class DatalinkInterface:
             raise ValueError("At least one datalinks mode must be enabled.")
         
         self.use_meshtastic = use_meshtastic
+        self.use_multicast = use_multicast
         self.use_udp = use_udp
         self.radio_port = radio_port
         self.link_port = meshtastic_dataport
@@ -46,22 +88,31 @@ class DatalinkInterface:
         self.rx_buffer = []
         self.running = False
         self.loop = asyncio.get_event_loop()
+        self.meshmap = {}
         
         self.multicast_group = multicast_group  # Save the multicast group
         # Use separate multicast port if provided; otherwise default to socket_port
         self.multicast_port = multicast_port if multicast_port is not None else self.socket_port
 
+    def map_mesh_nodes(self):
+        for i in self.nodemap:
+            meshid = self.nodemap[i]["meshid"]
+            if meshid!=0:
+                self.meshmap[self.nodemap[i]["meshid"]] = i
+
     def start(self):
         if self.use_udp:
-            print("DatalinkInterface using UDP")
+            print("Interface using UDP")
             self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.udp_sock.setblocking(False)
             self.udp_sock.bind((self.socket_host, self.socket_port))
             
             # Create multicast socket if multicast_group is provided
-            if self.multicast_group != "":
-                print(f"DatalinkInterface using UDP Multicast on group {self.multicast_group} port {self.multicast_port}")
+            if self.use_multicast:
+                if self.multicast_group=="" or not self.multicast_port:
+                    raise ValueError("Group+port must be specified when using Multicast.")
+                print(f"Interface using UDP Multicast on group {self.multicast_group} port {self.multicast_port}")
                 self.multicast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
                 self.multicast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 try:
@@ -81,14 +132,16 @@ class DatalinkInterface:
                 self.multicast_sock.setblocking(False)
 
         if self.use_meshtastic:
-            print("DatalinkInterface using Meshtastic")
+            print("Interface using Meshtastic")
             if not self.radio_port:
                 raise ValueError("Radio port must be specified when using Meshtastic.")
             self.mesh_client = MeshtasticClient(self.radio_port)
         
         self.running = True
-        asyncio.create_task(self._listen())
-        print("Connected to datalinkss")
+        if self.use_udp:
+            asyncio.create_task(self._listen())
+        self.map_mesh_nodes()
+        print("Connected to interfaces")
 
     def stop(self):
         self.running = False
@@ -98,7 +151,7 @@ class DatalinkInterface:
             self.multicast_sock.close()
         if self.mesh_client:
             self.mesh_client.meshint.close()
-        print("DatalinkInterfaces stopped")
+        print("Interfaces stopped")
 
     async def _listen(self):
         print(f"UDP Listening on {self.socket_host}:{self.socket_port}")
@@ -112,21 +165,29 @@ class DatalinkInterface:
                     #print(data)
                     source, dest, data = decode_udp_packet(data)
                     if data:
-                        self.rx_buffer.append({"data": data, "from": source})
+                        self.rx_buffer.append(
+                            {
+                                "intf": "udp", 
+                                "data": data, 
+                                "from": source,
+                                "time": time.time()
+                                })
                 except Exception as e:
                     err = str(e)
                     if "[Errno 11] Resource temporarily unavailable" not in err:
                         warnings.warn(f"Datalink Multicast listen error: {str(e)}")
+
             if self.multicast_sock:
                 try:
-                    #if hasattr(self.loop, 'sock_recvfrom'):
-                    #    data, addr = await self.loop.sock_recvfrom(self.multicast_sock, 1024)
-                    #else:
                     data, addr = await self.loop.run_in_executor(None, self.multicast_sock.recvfrom, 1024)
-                    #print(data)
                     source, dest, data = decode_udp_packet(data)
                     if data:
-                        self.rx_buffer.append({"data": data, "from": source})
+                        self.rx_buffer.append({
+                            "intf": "multicast", 
+                            "data": data, 
+                            "from": source,
+                            "time": time.time()
+                            })
                 except Exception as e:
                     err = str(e)
                     if "[Errno 11] Resource temporarily unavailable" not in err:
@@ -183,7 +244,15 @@ class DatalinkInterface:
         if self.mesh_client is not None:
             for msg in self.mesh_client.checkMail():
                 if msg.get("port") == self.link_port:
-                    self.rx_buffer.append(msg)
+                    senderid = int(msg.get("senderid").lstrip("!"), 16)
+                    source = self.meshmap[senderid]
+                    self.rx_buffer.append(
+                        {
+                            "intf": "meshtastic", 
+                            "data": msg['data'], 
+                            "from": source,
+                            "time": msg["time"]
+                        })
         messages = self.rx_buffer.copy()
         self.rx_buffer.clear()
         return messages
@@ -193,46 +262,16 @@ def load_nodes_map():
         return json.loads(file.read())
 
 
+# Helper function to get node ID from IP address
+def get_node_from_ip(ip):
+    for node, info in nodemap.items():
+        if info["ip"] == ip:
+            return node
+    return "unknown"
 
-async def main():
-    my_name = "gcs1"
-    nodemap = load_nodes_map()
-    my_id = nodemap[my_name][meshid]
-
-
-    link_config = {
-        "meshtastic": {
-            "use": False,
-            "radio_serial": '/dev/ttyACM0',
-            "app_portnum": 260
-        },
-        "udp": {
-            "use": True,
-            "port": 5555,
-            
-        },
-
-        "node_map": load_nodes_map()
-    }
- 
-    datalinks = DatalinkInterface(
-        use_meshtastic=link_config["meshtastic"]["use"],
-        use_udp=link_config["udp"]["use"],
-        my_id=my_id,
-        nodemap=nodemap
-    )
-
-    datalinks.start()
-
-    try:
-        while True:
-            msgs = datalinks.receive()
-            if msgs:
-                for msg in msgs:
-                    print(f"Processed: {msg}")
-            await asyncio.sleep(1)
-    finally:
-        datalinks.stop()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# Helper function to get node ID from mesh ID
+def get_node_from_meshid(meshid):
+    for node, info in nodemap.items():
+        if info["meshid"] == meshid:
+            return node
+    return "unknown"

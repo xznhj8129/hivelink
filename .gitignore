@@ -1,9 +1,9 @@
 __pycache__/
 .~*
 *.log
-meshed/synczero.sh
+synczero.sh
 notes.txt
 ./dumpsrc.sh
-meshed/dump.txt
+dump.txt
 .syncthing.*
 codex.patch

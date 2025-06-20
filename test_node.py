@@ -3,7 +3,6 @@
 import asyncio
 import msgpack
 import socket
-from frogtastic import MeshtasticClient
 import froggeolib
 import frogcot
 from message_structure import Messages
@@ -16,29 +15,6 @@ import sys
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 
-# Helper function to convert bitmap to list of active bits
-def int_to_list(bitmap):
-    return [i for i in range(bitmap.bit_length()) if (bitmap & (1 << i)) != 0]
-
-def list_to_int(indices):
-    bitmap = 0
-    for i in indices:
-        bitmap |= (1 << i)
-    return bitmap
-
-# Helper function to get node ID from IP address
-def get_node_from_ip(ip):
-    for node, info in nodemap.items():
-        if info["ip"] == ip:
-            return node
-    return "unknown"
-
-# Helper function to get node ID from mesh ID
-def get_node_from_meshid(meshid):
-    for node, info in nodemap.items():
-        if info["meshid"] == meshid:
-            return node
-    return "unknown"
 
 # Create a PromptSession with a simple caret prompt
 session = PromptSession("> ")
@@ -55,49 +31,53 @@ async def send_loop(datalinks):
             break
         if not message_text.strip():
             continue
-        msg_enum = Messages.Testing.System.TEXTMSG
-        payload = msg_enum.payload(textdata=message_text.encode('utf-8'))
-        encoded_message = encode_message(msg_enum, payload)
-        datalinks.send(encoded_message, dest=default_dest, multicast=True, udp=USE_UDP)
+
+        msg = Messages.Testing.System.TEXTMSG
+        payload = msg.payload(textdata=message_text.encode('utf-8'))
+        encoded_message = encode_message(msg, payload)
+        datalinks.send(encoded_message, dest=default_dest, meshtastic=True, multicast=False, udp=False)
         #print(f"[SENT] {message_text} ({len(encoded_message)} bytes)")
 
 # Async loop to receive and display messages
 async def receive_loop(datalinks):
     while True:
         messages = datalinks.receive()
+
         for msg in messages:
             try:
-                msg_enum, payload = decode_message(msg["data"])
-                if msg_enum == Messages.Testing.System.TEXTMSG:
+                msgtype, payload = decode_message(msg["data"])
+                if msgtype == Messages.Testing.System.TEXTMSG:
                     print(f"{msg['from']}: {payload['textdata'].decode('utf-8')}")
-                elif msg_enum.category == Messages.Command:
+                elif msgtype.category == Messages.Command:
                     print(f"Command payload: {payload}")
                 else:
-                    print(f"[RECEIVED] Unhandled message type: {msg_enum}")
+                    print(f"[RECEIVED] Unhandled message type: {msgtype}")
+
             except Exception as e:
                 print(f"[RECEIVED] Error decoding message: {e}")
                 print(traceback.format_exc())
         await asyncio.sleep(0.1)
 
 async def main():
+
     datalinks = DatalinkInterface(
-        use_meshtastic=USE_MESHTASTIC,
+        use_meshtastic=link_config["meshtastic"]["use"],
         radio_port=link_config["meshtastic"]["radio_serial"],
-        use_udp=USE_UDP,
-        socket_host=socket_host,
-        socket_port=socket_port,
-        my_name=my_name,
-        my_id=my_id,
-        nodemap=nodemap,
-        multicast_group="239.0.0.1",
-        multicast_port=5550
+        use_udp=link_config["udp"]["use"],
+        socket_host=link_config["udp"]["host"],
+        socket_port=link_config["udp"]["port"],
+        my_name=link_config["my_name"],
+        my_id=link_config["my_id"],
+        nodemap=link_config["nodemap"],
+        multicast_group=link_config["udp"]["multicast_group"],
+        multicast_port=link_config["udp"]["multicast_port"]
     )
 
     datalinks.start()
 
-    if USE_MESHTASTIC and datalinks.mesh_client:
-        uav_id = datalinks.mesh_client.meshint.getMyNodeInfo()
-        print(f"[INIT] My node ID: {uav_id}")
+    if datalinks.use_meshtastic and datalinks.mesh_client:
+        meshid = datalinks.mesh_client.meshint.getMyNodeInfo()
+        print(f"[INIT] My node ID: {meshid}")
 
     try:
         # patch_stdout lets prompt_toolkit manage prints so that input is preserved.
@@ -114,6 +94,7 @@ async def main():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Terminal chat program")
     parser.add_argument("--my_id", required=True, help="Node id as defined in nodes.json")
+    parser.add_argument("--meshtastic_device", default="", help="Node id as defined in nodes.json")
     args = parser.parse_args()
 
     nodemap = load_nodes_map()
@@ -125,20 +106,24 @@ if __name__ == '__main__':
     socket_host, socket_port = nodemap[my_name]["ip"]
 
     link_config = {
+        "my_name": my_name,
+        "my_id": my_id,
+
         "meshtastic": {
-            "use": False,
-            "radio_serial": '/dev/ttyUSB1',
+            "use": args.meshtastic_device != "",
+            "radio_serial": args.meshtastic_device,
             "app_portnum": 260
         },
         "udp": {
-            "use": True,
+            "use": False,
+            "host": socket_host,
             "port": socket_port,
+            "multicast_group": "239.0.0.1",
+            "multicast_port": 5550
         },
-        "node_map": nodemap
+        "nodemap": nodemap
     }
 
-    USE_MESHTASTIC = link_config["meshtastic"]["use"]
-    USE_UDP = link_config["udp"]["use"]
 
     try:
         asyncio.run(main())

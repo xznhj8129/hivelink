@@ -1,73 +1,77 @@
-Category	Type	Subtype	FieldName	FieldType	FieldBitmask
-Heartbeat	System	HEARTBEAT			
-Testing	System	TEXTMSG
-			textdata	bytes	FALSE
-Testing	System	BINMSG
-			data	bytes	FALSE
-Status	Mission	MISSION_PHASE			
-			MissionPhase	enum	FALSE
-Status	System	INAV			
-			inavmodes	int	FALSE
-			airspeed	int	FALSE
-			groundspeed	int	FALSE
-			heading	int	FALSE
-			msl_alt	int	FALSE
-			packed_mgrs	bytes	FALSE
-Status	System	FLIGHT			
-			FlightMode	enum	FALSE
-			airspeed	int	FALSE
-			groundspeed	int	FALSE
-			heading	int	FALSE
-			msl_alt	int	FALSE
-			packed_mgrs	bytes	FALSE
-Status	System	POSITION			
-			packed_mgrs	bytes	FALSE
-Status	System	NAVIGATION			
-Status	System	FUEL			
-Status	System	CONTROL			
-Status	System	SYSTEMS			
-Status	System	NAV			
-Status	System	RADIO			
-Status	System	PAYLOAD			
-Command	System	ACTIVATE			
-Command	System	SHUTDOWN			
-Command	System	SET_FLIGHT_MODE			
-Command	System	SWITCH_DATALINK			
-Command	System	DATALINK_CONFIG			
-Command	System	SET_FLIGHT_PARAMETERS			
-Command	Mission	SET_MISSION			
-			mission_index	int	FALSE
-Command	Mission	SET_MISSION_MODE			
-Command	Mission	TAKEOFF			
-Command	Mission	ABORT			
-Command	Mission	HOLD			
-Command	Mission	PROCEED			
-Command	Mission	REROUTE			
-Command	Mission	REASSIGN			
-Command	Mission	SET_WAYPOINT			
-Command	Mission	SET_ZONE			
-Command	Mission	NAVIGATE_TO			
-			packed_mgrs	bytes	FALSE
-Command	Mission	LOITER			
-Command	Mission	LAND			
-Command	Mission	ALLOW_DEPLOY	
-Command	Mission	SWARM_CONTROL			
-Event	Mission	PHASE			
-			MissionPhase	enum	FALSE
-Event	System	ONLINE			
-Event	System	GPS_FIX			
-Event	System	ERROR			
-Event	System	RADIO			
-Event	System	RF_EVENT			
-Event	System	FAILSAFE			
-Event	System	HW_FAILURE			
-Data	Mission	QUERY_MISSION_ID			
-Data	Mission	QUERY_MISSION_PROGRESS			
-Data	Mission	QUERY_CONTACTS			
-Data	Mission	QUERY_SWARM_INFO			
-Data	System	QUERY_SENSOR_DATA			
-Data	System	QUERY_LOG_DATA			
-Data	System	QUERY_DATALINK_STATUS			
-Data	System	QUERY_NETWORK_STATUS			
-Data	System	QUERY_SYSTEM_HEALTH			
-Data	System	QUERY_TELEMETRY			
+Category,Type,Subtype,FieldName,FieldType,FieldBitmask
+Heartbeat,System,HEARTBEAT,,,
+Testing,System,TEXTMSG,,,
+,,,textdata,bytes,FALSE
+Testing,System,BINMSG,,,
+,,,data,bytes,FALSE
+Status,Mission,MISSION_PHASE,,,
+,,,MissionPhase,enum,FALSE
+Status,System,INAV,,,
+,,,inavmodes,int,FALSE
+,,,airspeed,int,FALSE
+,,,groundspeed,int,FALSE
+,,,heading,int,FALSE
+,,,msl_alt,int,FALSE
+,,,packed_mgrs,bytes,FALSE
+Status,System,FLIGHT,,,
+,,,FlightMode,enum,FALSE
+,,,airspeed,int,FALSE
+,,,groundspeed,int,FALSE
+,,,heading,int,FALSE
+,,,msl_alt,int,FALSE
+,,,packed_mgrs,bytes,FALSE
+Status,System,POSITION,,,
+,,,packed_mgrs,bytes,FALSE
+Status,System,NAVIGATION,,,
+Status,System,FUEL,,,
+Status,System,CONTROL,,,
+Status,System,SYSTEMS,,,
+Status,System,NAV,,,
+Status,System,RADIO,,,
+Status,System,PAYLOAD,,,
+Command,System,ACTIVATE,,,
+Command,System,SHUTDOWN,,,
+Command,System,SET_FLIGHT_MODE,,,
+Command,System,SWITCH_DATALINK,,,
+Command,System,DATALINK_CONFIG,,,
+Command,System,SET_FLIGHT_PARAMETERS,,,
+Command,Mission,SET_MISSION,,,
+,,,mission_index,int,FALSE
+Command,Mission,SET_MISSION_MODE,,,
+Command,Mission,TAKEOFF,,,
+Command,Mission,ABORT,,,
+Command,Mission,HOLD,,,
+Command,Mission,PROCEED,,,
+Command,Mission,REROUTE,,,
+Command,Mission,REASSIGN,,,
+Command,Mission,SET_WAYPOINT,,,
+Command,Mission,SET_ZONE,,,
+Command,Mission,NAVIGATE_TO,,,
+,,,packed_mgrs,bytes,FALSE
+Command,Mission,LOITER,,,
+Command,Mission,LAND,,,
+Command,Mission,ALLOW_DEPLOY,,,
+Command,Mission,SWARM_CONTROL,,,
+Event,Mission,PHASE,,,
+,,,MissionPhase,enum,FALSE
+Event,System,ONLINE,,,
+Event,System,GPS_FIX,,,
+Event,System,ERROR,,,
+Event,System,RADIO,,,
+Event,System,RF_EVENT,,,
+Event,System,FAILSAFE,,,
+Event,System,HW_FAILURE,,,
+Event,System,ACK,,,
+,,,msgid,int,FALSE
+,,,rxtime,int,FALSE
+,,,rssi,int,FALSE
+Data,Mission,QUERY_MISSION_ID,,,
+Data,Mission,QUERY_MISSION_PROGRESS,,,
+Data,Mission,QUERY_CONTACTS,,,
+Data,Mission,QUERY_SWARM_INFO,,,
+Data,System,QUERY_SENSOR_DATA,,,
+Data,System,QUERY_LOG_DATA,,,
+Data,System,QUERY_DATALINK_STATUS,,,
+Data,System,QUERY_NETWORK_STATUS,,,
+Data,System,QUERY_SYSTEM_HEALTH,,,
+Data,System,QUERY_TELEMETRY,,,

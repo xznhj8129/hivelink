@@ -34,43 +34,6 @@ bin_type_map = {
     "bool": "?"
 }
 
-PROTOCOL_VERSION = 1  # Major version; can extend later
-MAX_MESH_PACKET_SIZE = 220  # Total packet size (bytes)
-SYNC_BYTE = 0xFA
-crc16 = crcmod.predefined.mkCrcFun('crc-ccitt-false')
-    
-# --- UDP Packet Structure Definition ---
-#[SYNC_BYTE, payload length, checksum, source id, destination id, payload]
-
-def encode_udp_packet(source: str, destination: str, payload: bytes) -> bytes:
-    s = bytes(source,'utf-8')
-    d = bytes(destination,'utf-8')
-    checksum = crc16(s + d + payload)
-    plen = len(payload)
-    packet = msgpack.packb([SYNC_BYTE, plen, checksum, s, d, payload])
-    return packet
-
-def decode_udp_packet(packet: bytes) -> dict:
-    data = msgpack.unpackb(packet, use_list=True)
-    if len(data) != 6:  # Minimum: StartByte, Length, Version, BinaryFlags, Routing, Checksum
-        raise ValueError("Protocol Error: Packet length mismatch.")
-        #return None
-    else:
-        syncbyte, length, checksum, source, destination, payload = data
-
-    if syncbyte != SYNC_BYTE:
-        raise ValueError("Protocol Error: Sync byte mismatch")
-        
-    plen = len(payload)
-    if plen!=length:
-        raise ValueError("Protocol Error: Length mismatch")
-
-    # Verify checksum
-    calc_checksum = crc16(source + destination + payload)
-    if calc_checksum != checksum:
-        raise ValueError("Protocol Error: Checksum mismatch.")
-
-    return [source.decode('utf-8'), destination.decode('utf-8'), payload]
 
 class MessageDefinitions:
     def __init__(self):
