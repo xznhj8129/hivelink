@@ -6,7 +6,6 @@ from enum import Enum, IntEnum, auto, IntFlag
 import msgpack
 from message_structure import Messages, MessageCategory
 from payload_enums import *
-import struct
 import crcmod
 
 type_mapping = {
