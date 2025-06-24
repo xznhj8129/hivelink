@@ -2,6 +2,7 @@ import asyncio
 import socket
 import warnings
 import json
+import os
 from typing import Optional, Dict, Any
 import time
 import crcmod
@@ -258,7 +259,8 @@ class DatalinkInterface:
         return messages
 
 def load_nodes_map():
-    with open("nodes.json", 'r') as file:
+    here = os.path.dirname(__file__)
+    with open(os.path.join(here, "nodes.json"), 'r') as file:
         return json.loads(file.read())
 
 

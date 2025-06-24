@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 
 import asyncio
-import msgpack
-import socket
 import froggeolib
 import frogcot
-from message_structure import Messages
-from datalinks import *
-from protocol import *
+from hivelink import Messages, CommNode, load_nodes_map
 import traceback
 import argparse
 import sys
@@ -20,7 +16,7 @@ from prompt_toolkit.patch_stdout import patch_stdout
 session = PromptSession("> ")
 
 # Async loop to read user input and send messages
-async def send_loop(datalinks):
+async def send_loop(node):
     # For testing, if this node is "gcs1", send to "drone1", else send to "gcs1"
     default_dest = "gcs1" if my_name != "gcs1" else "drone1"
     while True:
@@ -33,19 +29,19 @@ async def send_loop(datalinks):
             continue
 
         msg = Messages.Testing.System.TEXTMSG
-        payload = msg.payload(textdata=message_text.encode('utf-8'))
-        encoded_message = encode_message(msg, payload)
-        datalinks.send(encoded_message, dest=default_dest, meshtastic=True, multicast=False, udp=False)
+        payload = {"textdata": message_text.encode("utf-8")}
+        node.send_message(msg, payload, dest=default_dest, meshtastic=True)
         #print(f"[SENT] {message_text} ({len(encoded_message)} bytes)")
 
 # Async loop to receive and display messages
-async def receive_loop(datalinks):
+async def receive_loop(node):
     while True:
-        messages = datalinks.receive()
+        messages = node.receive_messages()
 
         for msg in messages:
             try:
-                msgtype, payload = decode_message(msg["data"])
+                msgtype = msg["msg_enum"]
+                payload = msg["payload"]
                 if msgtype == Messages.Testing.System.TEXTMSG:
                     print(f"{msg['from']}: {payload['textdata'].decode('utf-8')}")
                 elif msgtype.category == Messages.Command:
@@ -60,35 +56,23 @@ async def receive_loop(datalinks):
 
 async def main():
 
-    datalinks = DatalinkInterface(
-        use_meshtastic=link_config["meshtastic"]["use"],
-        radio_port=link_config["meshtastic"]["radio_serial"],
-        use_udp=link_config["udp"]["use"],
-        socket_host=link_config["udp"]["host"],
-        socket_port=link_config["udp"]["port"],
-        my_name=link_config["my_name"],
-        my_id=link_config["my_id"],
-        nodemap=link_config["nodemap"],
-        multicast_group=link_config["udp"]["multicast_group"],
-        multicast_port=link_config["udp"]["multicast_port"]
-    )
+    node = CommNode(link_config)
+    node.start()
 
-    datalinks.start()
-
-    if datalinks.use_meshtastic and datalinks.mesh_client:
-        meshid = datalinks.mesh_client.meshint.getMyNodeInfo()
+    if node.link.use_meshtastic and node.link.mesh_client:
+        meshid = node.link.mesh_client.meshint.getMyNodeInfo()
         print(f"[INIT] My node ID: {meshid}")
 
     try:
         # patch_stdout lets prompt_toolkit manage prints so that input is preserved.
         with patch_stdout():
-            send_task = asyncio.create_task(send_loop(datalinks))
-            recv_task = asyncio.create_task(receive_loop(datalinks))
+            send_task = asyncio.create_task(send_loop(node))
+            recv_task = asyncio.create_task(receive_loop(node))
             await asyncio.gather(send_task, recv_task)
     except KeyboardInterrupt:
         print("Shutting down...")
     finally:
-        datalinks.stop()
+        node.stop()
         print("Connection closed")
 
 if __name__ == '__main__':

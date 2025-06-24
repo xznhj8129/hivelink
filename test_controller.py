@@ -1,12 +1,9 @@
 import time
-import socket
 import asyncio
-from frogtastic import MeshtasticClient
 import froggeolib
 from unavlib.modules.utils import inavutil
-from message_structure import Messages
-from protocol import *
-from datalinks import *
+from hivelink import Messages, CommNode, load_nodes_map
+from hivelink.protocol import decode_message, messageid
 
 
 # Helper function to convert bitmap to list of active bits
@@ -49,22 +46,24 @@ MULTICAST_GROUP = "239.0.0.1"
 MULTICAST_PORT = 5550
 
 async def main():
-    datalinks = DatalinkInterface(
-        use_meshtastic=USE_MESHTASTIC,
-        radio_port=link_config["meshtastic"]["radio_serial"],
-        use_udp=USE_UDP,
-        socket_host=socket_host,
-        socket_port=socket_port,
-        my_id=my_id,
-        nodemap=nodemap,
-        multicast_group=MULTICAST_GROUP,
-        multicast_port=MULTICAST_PORT
-    )
+    node = CommNode({
+        "meshtastic": link_config["meshtastic"],
+        "udp": {
+            "use": USE_UDP,
+            "host": socket_host,
+            "port": socket_port,
+            "multicast_group": MULTICAST_GROUP,
+            "multicast_port": MULTICAST_PORT,
+        },
+        "my_name": my_name,
+        "my_id": my_id,
+        "nodemap": nodemap,
+    })
 
-    datalinks.start()
+    node.start()
 
-    if USE_MESHTASTIC and datalinks.mesh_client:
-        print(datalinks.mesh_client.meshint.getMyNodeInfo())
+    if USE_MESHTASTIC and node.link.mesh_client:
+        print(node.link.mesh_client.meshint.getMyNodeInfo())
 
     # Command queue with a command to send to drone1
     command_queue = [
@@ -86,7 +85,7 @@ async def main():
     try:
         while True:
             # Receive messages from the datalinks
-            msgs = datalinks.receive()
+            msgs = node.receive_messages()
             if msgs:
                 for msg in msgs:
                     try:
@@ -124,7 +123,7 @@ async def main():
         print("Shut down")
     finally:
         # Properly stop the datalinks to clean up resources
-        datalinks.stop()
+        node.stop()
         print("Connection closed")
 
 

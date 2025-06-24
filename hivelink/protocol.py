@@ -1,6 +1,7 @@
 import struct
 import time
 import json
+import os
 from typing import List, Dict, Tuple, Optional, Any
 from enum import Enum, IntEnum, auto, IntFlag
 import msgpack
@@ -37,7 +38,8 @@ bin_type_map = {
 class MessageDefinitions:
     def __init__(self):
         """Loads the pre-generated JSON into messages."""
-        with open("message_definitions.json") as f:
+        here = os.path.dirname(__file__)
+        with open(os.path.join(here, "message_definitions.json")) as f:
             self.messages = json.load(f)
 
 def messageid(msg):
