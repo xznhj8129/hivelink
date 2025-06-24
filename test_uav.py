@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
 
 import asyncio
-import msgpack
-import socket
 from unavlib.control import UAVControl
-from unavlib.modules import geospatial
-from unavlib.modules.utils import inavutil
-from frogtastic import MeshtasticClient
 import froggeolib
 import frogcot
-from message_structure import Messages
-from datalinks import *
-from protocol import *
+from hivelink import Messages, CommNode, load_nodes_map
 
 
 
@@ -75,23 +68,24 @@ SEND_INTERVAL = 5
 
 
 async def main():
-    datalinks = DatalinkInterface(
-        use_meshtastic=USE_MESHTASTIC,
-        radio_port=link_config["meshtastic"]["radio_serial"],
-        use_udp=USE_UDP,
-        socket_host=socket_host,
-        socket_port=socket_port,
-        my_name=my_name,
-        my_id=my_id,
-        nodemap=nodemap,
-        multicast_group=MULTICAST_GROUP,
-        multicast_port=MULTICAST_PORT
-    )
+    node = CommNode({
+        "meshtastic": link_config["meshtastic"],
+        "udp": {
+            "use": USE_UDP,
+            "host": socket_host,
+            "port": socket_port,
+            "multicast_group": MULTICAST_GROUP,
+            "multicast_port": MULTICAST_PORT,
+        },
+        "my_name": my_name,
+        "my_id": my_id,
+        "nodemap": nodemap,
+    })
 
-    datalinks.start()
+    node.start()
 
-    if USE_MESHTASTIC and datalinks.mesh_client:
-        uav_id = datalinks.mesh_client.meshint.getMyNodeInfo()
+    if USE_MESHTASTIC and node.link.mesh_client:
+        uav_id = node.link.mesh_client.meshint.getMyNodeInfo()
         print(f"[INIT] My node ID: {uav_id}")
 
     # Initialize UAV
@@ -130,8 +124,6 @@ async def main():
             pos = froggeolib.encode_mgrs_binary(full_mgrs, precision=5)
 
             msg_enum = Messages.Status.System.INAV
-            
-            msg_id = messageid(msg_enum)
             payload = msg_enum.payload(
                 airspeed=int(speed),
                 inavmodes=modemap,
@@ -142,16 +134,15 @@ async def main():
             )
 
             # Send telemetry
-            encoded_message = encode_message(msg_enum, payload)
-            datalinks.send(encoded_message, dest="gcs1", udp=USE_UDP)
-            print(f"[SENT] Telemetry message, length: {len(encoded_message)} bytes")
+            node.send_message(msg_enum, payload, dest="gcs1", udp=USE_UDP)
+            print("[SENT] Telemetry message")
 
             # Receive messages
-            messages = datalinks.receive()
+            messages = node.receive_messages()
             for msg in messages:
                 try:
-                    category, subcategory, message, payload = decode_message(msg["data"])
-                    print(f"[RECEIVED] Message from {msg['from']}: {category}.{subcategory}.{message}")
+                    msg_enum, payload = msg["msg_enum"], msg["payload"]
+                    print(f"[RECEIVED] Message from {msg['from']}: {msg_enum}")
 
                     if category == Messages.Command.value:
                         print(f"Command payload: {payload}")
@@ -168,7 +159,7 @@ async def main():
         print(f"Shut down")
     finally:
         mydrone.stop()
-        datalinks.stop()
+        node.stop()
         print("Connection closed")
 
 if __name__ == '__main__':

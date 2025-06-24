@@ -26,6 +26,11 @@ Significantly simplified and integrated with my other libraries\
 - [FrogGeoLib](https://github.com/xznhj8129/froggeolib)
 - [FrogTastic](https://github.com/xznhj8129/frogtastic) (probably will change)
 
+Install the library in editable mode:
+```bash
+pip install -e .
+```
+
 ## Message definitions
 Messages are described in `message_definitions.csv`. Run `gen_definitions.py` to regenerate
 `message_definitions.json` and the auto generated `message_structure.py` enum tree. Each enum
@@ -53,26 +58,27 @@ payload = Messages.Testing.System.TEXTMSG.payload(textdata=b"hello")
 - **nodes.json** is pre-shared across nodes and provides network mapping, public keys, etc
 
 ## Datalinks
-`datalinks.py` provides the `DatalinkInterface` which hides the underlying transport.
+`hivelink` now exposes a higher level `CommNode` class wrapping `DatalinkInterface`.
 It supports Meshtastic and UDP (unicast and multicast). Node information such as IDs and
-IP addresses is loaded from `nodes.json`.
+IP addresses is loaded from `nodes.json` which is included with the package.
 
 Basic usage:
 ```python
-from datalinks import DatalinkInterface, load_nodes_map
-from message_structure import Messages
-from protocol import encode_message
+from hivelink import CommNode, load_nodes_map, Messages
 
 nodemap = load_nodes_map()
-link = DatalinkInterface(use_udp=True, my_name="gcs1", my_id=nodemap["gcs1"]["meshid"],
-                         nodemap=nodemap, multicast_group="239.0.0.1", multicast_port=5550)
-link.start()
+node = CommNode({
+    "my_name": "gcs1",
+    "my_id": nodemap["gcs1"]["meshid"],
+    "udp": {"use": True, "multicast_group": "239.0.0.1", "multicast_port": 5550},
+    "nodemap": nodemap,
+})
+node.start()
 
-payload = Messages.Testing.System.TEXTMSG.payload(textdata=b"hi")
-msg = encode_message(Messages.Testing.System.TEXTMSG, payload)
-link.send(msg, dest="drone1", udp=True)
+payload = {"textdata": b"hi"}
+node.send_message(Messages.Testing.System.TEXTMSG, payload, dest="drone1", udp=True)
 ```
-Call `link.receive()` to read incoming messages and `link.stop()` when finished.
+Call `node.receive_messages()` to read incoming messages and `node.stop()` when finished.
 
 ## Example nodes
 - `test_node.py` – simple terminal chat using multicast or Meshtastic.
