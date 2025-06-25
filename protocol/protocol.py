@@ -178,6 +178,11 @@ from enum import Enum, IntEnum, auto
 
 # ========== Reply PAYLOAD BYTE DEFINITIONS ==========
 class PayloadEnum:
+    class FlightMode(IntEnum):
+        ACRO = auto()
+        ANGLE = auto()
+        CRUISE = auto()
+        AUTO = auto()
         
     class CommandResult(IntEnum):
         # Reply to Command

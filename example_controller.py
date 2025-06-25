@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# WARNING: outdated
 import time
 import socket
 import asyncio

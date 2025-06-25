@@ -7,9 +7,6 @@ import argparse
 from pprint import pformat
 
 def generate_enums_file(message_dict):
-    # Remove old file to ensure fresh generation
-    if os.path.exists("message_structure.py"):
-        os.remove("message_structure.py")
     
     # Generate MessageCategory enum
     category_code = "# This file is auto generated, refer to gen_definitions.py\n\nclass MessageCategory(Enum):\n"
@@ -46,21 +43,21 @@ def generate_enums_file(message_dict):
                 payload_code += f"Messages.{category}.{subcategory}.{message}.payload_def = {repr(payload)}\n"
 
     # Combine all parts
-    code = "from enum import Enum, auto\n\n"
+    code = "from enum import Enum, IntEnum, auto\n\n"
     code += category_code + "\n"
     code += messages_code
     code += values_code
     code += payload_code
 
     # Debug: Print the generated code
-    print("Generated code:")
-    print(code)
-
+    #print("Generated code:")
+    #print(code)
+    return code
     # Write to file
-    with open("message_structure.py", "w") as f:
-        f.write(code)
+    #with open("message_structure.py", "w") as f:
+    #    f.write(code)
 
-def generate_message_definitions(csvfile="message_definitions.csv"): #TODO: relative path import problem
+def generate_message_definitions(csvfile="message_definitions.csv", payloads="protocol/payload_enums.py", name="default",ver=1): #TODO: relative path import problem
     """Reads the CSV, builds the message dictionary, writes it to JSON, and generates enums."""
     messages = {}
     with open(csvfile, newline='') as csvfile:
@@ -96,16 +93,22 @@ def generate_message_definitions(csvfile="message_definitions.csv"): #TODO: rela
                     cat, typ, sub = current_message
                     messages[cat][typ][sub].append(payload)
     
-    # Remove old JSON and write new
-    if os.path.exists("message_definitions.json"):
-        os.remove("message_definitions.json")
-    with open("message_definitions.py", "w") as file:
-        file.write(pformat(messages, sort_dicts=True, indent=4, width=80))
-    with open("message_definitions.json", "w") as file:
-        file.write(json.dumps(messages, indent=4))
+    pname = f"protocol_{name}_v{ver}"
+
+    with open(payloads,'r') as file:
+        pe = file.read()
+
+    enumspy = generate_enums_file(messages)
+    f = f'PROTOCOL_VERSION = {ver}\nPROTOCOL_NAME = "{name}"\n\n' + enumspy + '\n\n' + pe
+
+    with open("hivelink/protocol.py", "w") as file:
+        file.write(f)
+
+    f2 = json.dumps(messages, indent=4)# + '\n\n' + 
+    with open("protocol/protocol.json", "w") as file:
+        file.write(f2)
     
     # Generate enums
-    generate_enums_file(messages)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate message protocol definition")
@@ -115,18 +118,18 @@ if __name__ == '__main__':
     parser.add_argument("--out", default="message_definitions.json", help="Output JSON file")
     args = parser.parse_args()
 
-    generate_message_definitions(csvfile=args.csvfile)
+    generate_message_definitions(csvfile=args.csvfile,name=args.name, ver=args.version)
     
     #TODO:     from .message_structure import * #leave as *
     #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     #ImportError: attempted relative import with no known parent package
-    from protocol import MessageDefinitions
-    protodefs = MessageDefinitions()
-    print("Structure:")
-    pprint.pprint(protodefs.messages)
+    #from msglib import MessageDefinitions
+    #protodefs = MessageDefinitions()
+    #print("Structure:")
+    #pprint.pprint(protodefs.messages)
     
     # Test the generated enums
-    from message_structure import Messages
+    from hivelink.protocol import Messages
     print("\nTesting enum values:")
     print("Status.System.FLIGHT:", Messages.Status.System.FLIGHT.value)
     print("Status.System.POSITION:", Messages.Status.System.POSITION.value)

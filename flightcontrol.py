@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#WARNING: Outdated
 
 import asyncio
 from mavsdk import System

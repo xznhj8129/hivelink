@@ -5,9 +5,9 @@ import msgpack
 import socket
 import froggeolib
 import frogcot
-from hivelink.message_structure import Messages
+from hivelink.protocol import protocol
 from hivelink.datalinks import *
-from hivelink.protocol import *
+from hivelink.msglib import *
 import traceback
 import argparse
 import sys

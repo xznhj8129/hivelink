@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# WARNING: outdated
 
 import asyncio
 import msgpack
