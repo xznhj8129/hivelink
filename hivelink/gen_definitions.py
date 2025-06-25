@@ -3,6 +3,8 @@ import csv
 import json
 import pprint
 import os
+import argparse
+from pprint import pformat
 
 def generate_enums_file(message_dict):
     # Remove old file to ensure fresh generation
@@ -10,7 +12,7 @@ def generate_enums_file(message_dict):
         os.remove("message_structure.py")
     
     # Generate MessageCategory enum
-    category_code = "# This file is auto generated, refer to definitions.py\n\nclass MessageCategory(Enum):\n"
+    category_code = "# This file is auto generated, refer to gen_definitions.py\n\nclass MessageCategory(Enum):\n"
     categories = list(message_dict.keys())
     for i, category in enumerate(categories, start=1):
         category_code += f"    {category} = {i}\n"
@@ -97,6 +99,8 @@ def generate_message_definitions(csvfile="message_definitions.csv"): #TODO: rela
     # Remove old JSON and write new
     if os.path.exists("message_definitions.json"):
         os.remove("message_definitions.json")
+    with open("message_definitions.py", "w") as file:
+        file.write(pformat(messages, sort_dicts=True, indent=4, width=80))
     with open("message_definitions.json", "w") as file:
         file.write(json.dumps(messages, indent=4))
     
@@ -104,7 +108,18 @@ def generate_message_definitions(csvfile="message_definitions.csv"): #TODO: rela
     generate_enums_file(messages)
 
 if __name__ == '__main__':
-    generate_message_definitions()
+    parser = argparse.ArgumentParser(description="Generate message protocol definition")
+    parser.add_argument("--csvfile", default="message_definitions.csv", help="Message definition file")
+    parser.add_argument("--name", default="default", help="Protocol name")
+    parser.add_argument("--version", default=1, help="Protocol version int")
+    parser.add_argument("--out", default="message_definitions.json", help="Output JSON file")
+    args = parser.parse_args()
+
+    generate_message_definitions(csvfile=args.csvfile)
+    
+    #TODO:     from .message_structure import * #leave as *
+    #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    #ImportError: attempted relative import with no known parent package
     from protocol import MessageDefinitions
     protodefs = MessageDefinitions()
     print("Structure:")

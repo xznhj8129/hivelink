@@ -4,8 +4,6 @@ import json
 from typing import List, Dict, Tuple, Optional, Any
 from enum import Enum, IntEnum, auto, IntFlag
 import msgpack
-from .datalinks import encode_udp_packet, decode_udp_packet
-from .message_structure import Messages, MessageCategory
 from .protocol import *
 from .payload_enums import *
 #ImportError: attempted relative import with no known parent package
@@ -13,6 +11,8 @@ import crcmod
 
 # Usage Example
 if __name__ == "__main__":
+    from .datalinks import encode_udp_packet, decode_udp_packet
+    from .message_structure import Messages, MessageCategory
     from froggeolib import *
 
     print("Status.System.FLIGHT:", Messages.Status.System.FLIGHT.value)      # Should be 1

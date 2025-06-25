@@ -4,7 +4,7 @@ import json
 from typing import List, Dict, Tuple, Optional, Any
 from enum import Enum, IntEnum, auto, IntFlag
 import msgpack
-from .message_structure import Messages, MessageCategory
+from .message_structure import * #leave as *
 from .payload_enums import *
 import crcmod
 
