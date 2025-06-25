@@ -99,7 +99,7 @@ if __name__ == '__main__':
             "app_portnum": 260
         },
         "udp": {
-            "use": False,
+            "use": True,
             "host": socket_host,
             "port": socket_port,
             "multicast_group": "239.0.0.1",
