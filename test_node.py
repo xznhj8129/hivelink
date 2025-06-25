@@ -32,10 +32,22 @@ async def send_loop(datalinks):
         if not message_text.strip():
             continue
 
+        send_mc = False
+        send_mesh = False
+        send_udp = False
+        if message_text.startswith("/mesh "):
+            message_text = message_text.strip("/mesh ")
+            send_mesh = True
+        elif message_text.startswith("/mc "):
+            message_text = message_text.strip("/mc ")
+            send_mc = True
+        else:
+            send_udp = True
+
         msg = Messages.Testing.System.TEXTMSG
         payload = msg.payload(textdata=message_text.encode('utf-8'))
         encoded_message = encode_message(msg, payload)
-        datalinks.send(encoded_message, dest=default_dest, meshtastic=False, multicast=False, udp=True)
+        datalinks.send(encoded_message, dest=default_dest, meshtastic=send_mesh, multicast=send_mc, udp=send_udp)
         #print(f"[SENT] {message_text} ({len(encoded_message)} bytes)")
 
 # Async loop to receive and display messages
@@ -119,7 +131,7 @@ if __name__ == '__main__':
             "use": True,
             "host": socket_host,
             "port": socket_port,
-            "use_multicast": False,
+            "use_multicast": True,
             "multicast_group": "239.0.0.1",
             "multicast_port": 5550
         },
