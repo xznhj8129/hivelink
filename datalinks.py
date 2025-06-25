@@ -175,7 +175,7 @@ class DatalinkInterface:
                 except Exception as e:
                     err = str(e)
                     if "[Errno 11] Resource temporarily unavailable" not in err:
-                        warnings.warn(f"Datalink Multicast listen error: {str(e)}")
+                        warnings.warn(f"Datalink UDP listen error: {str(e)}")
 
             if self.multicast_sock:
                 try:

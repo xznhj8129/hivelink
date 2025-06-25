@@ -35,7 +35,7 @@ async def send_loop(datalinks):
         msg = Messages.Testing.System.TEXTMSG
         payload = msg.payload(textdata=message_text.encode('utf-8'))
         encoded_message = encode_message(msg, payload)
-        datalinks.send(encoded_message, dest=default_dest, meshtastic=True, multicast=False, udp=False)
+        datalinks.send(encoded_message, dest=default_dest, meshtastic=False, multicast=False, udp=True)
         #print(f"[SENT] {message_text} ({len(encoded_message)} bytes)")
 
 # Async loop to receive and display messages
@@ -64,6 +64,7 @@ async def main():
         use_meshtastic=link_config["meshtastic"]["use"],
         radio_port=link_config["meshtastic"]["radio_serial"],
         use_udp=link_config["udp"]["use"],
+        use_multicast=link_config["udp"]["use_multicast"],
         socket_host=link_config["udp"]["host"],
         socket_port=link_config["udp"]["port"],
         my_name=link_config["my_name"],
@@ -115,9 +116,10 @@ if __name__ == '__main__':
             "app_portnum": 260
         },
         "udp": {
-            "use": False,
+            "use": True,
             "host": socket_host,
             "port": socket_port,
+            "use_multicast": False,
             "multicast_group": "239.0.0.1",
             "multicast_port": 5550
         },
