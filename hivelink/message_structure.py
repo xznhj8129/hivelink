@@ -67,6 +67,7 @@ class Messages:
             RF_EVENT = auto()
             FAILSAFE = auto()
             HW_FAILURE = auto()
+            ACK = auto()
     class Data:
         class Mission(Enum):
             QUERY_MISSION_ID = auto()
@@ -157,6 +158,7 @@ Messages.Event.System.RADIO.payload_def = []
 Messages.Event.System.RF_EVENT.payload_def = []
 Messages.Event.System.FAILSAFE.payload_def = []
 Messages.Event.System.HW_FAILURE.payload_def = []
+Messages.Event.System.ACK.payload_def = [{'name': 'msgid', 'datatype': 'int', 'bitmask': False}, {'name': 'rxtime', 'datatype': 'int', 'bitmask': False}, {'name': 'rssi', 'datatype': 'int', 'bitmask': False}]
 Messages.Data.Mission.QUERY_MISSION_ID.payload_def = []
 Messages.Data.Mission.QUERY_MISSION_PROGRESS.payload_def = []
 Messages.Data.Mission.QUERY_CONTACTS.payload_def = []

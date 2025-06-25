@@ -169,7 +169,24 @@
             "RADIO": [],
             "RF_EVENT": [],
             "FAILSAFE": [],
-            "HW_FAILURE": []
+            "HW_FAILURE": [],
+            "ACK": [
+                {
+                    "name": "msgid",
+                    "datatype": "int",
+                    "bitmask": false
+                },
+                {
+                    "name": "rxtime",
+                    "datatype": "int",
+                    "bitmask": false
+                },
+                {
+                    "name": "rssi",
+                    "datatype": "int",
+                    "bitmask": false
+                }
+            ]
         }
     },
     "Data": {

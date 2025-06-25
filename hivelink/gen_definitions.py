@@ -58,11 +58,11 @@ def generate_enums_file(message_dict):
     with open("message_structure.py", "w") as f:
         f.write(code)
 
-def generate_message_definitions():
+def generate_message_definitions(csvfile="message_definitions.csv"): #TODO: relative path import problem
     """Reads the CSV, builds the message dictionary, writes it to JSON, and generates enums."""
     messages = {}
-    with open("message_definitions.csv", newline='') as csvfile:
-        reader = csv.DictReader(csvfile, delimiter='\t')
+    with open(csvfile, newline='') as csvfile:
+        reader = csv.DictReader(csvfile, delimiter=',')
         current_message = None
         for row in reader:
             row = {k: (v.strip() if v is not None else "") for k, v in row.items()}

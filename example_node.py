@@ -5,9 +5,9 @@ import msgpack
 import socket
 import froggeolib
 import frogcot
-from message_structure import Messages
-from datalinks import *
-from protocol import *
+from hivelink.message_structure import Messages
+from hivelink.datalinks import *
+from hivelink.protocol import *
 import traceback
 import argparse
 import sys
@@ -59,7 +59,7 @@ async def receive_loop(datalinks):
             try:
                 msgtype, payload = decode_message(msg["data"])
                 if msgtype == Messages.Testing.System.TEXTMSG:
-                    print(f"{msg['from']}: {payload['textdata'].decode('utf-8')}")
+                    print(f"{msg['from']}({msg['intf']}): {payload['textdata'].decode('utf-8')}")
                 elif msgtype.category == Messages.Command:
                     print(f"Command payload: {payload}")
                 else:
