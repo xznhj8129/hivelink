@@ -95,15 +95,21 @@ def generate_message_definitions(csvfile="message_definitions.csv", payloads="pr
     
     pname = f"protocol_{name}_v{ver}"
 
-    pe = gen_payload_enums(payloads=payloads)
+    edict, estr = gen_payload_enums(payloads=payloads)
 
     enumspy = generate_enums_file(messages)
-    f = f'PROTOCOL_VERSION = {ver}\nPROTOCOL_NAME = "{name}"\n\n' + enumspy + '\n\n' + pe
+    f = f'PROTOCOL_VERSION = {ver}\nPROTOCOL_NAME = "{name}"\n\n' + enumspy + '\n\n' + estr
 
     with open("hivelink/protocol.py", "w") as file:
         file.write(f)
 
-    f2 = json.dumps(messages, indent=4)# + '\n\n' + 
+    pdict = {
+        "PROTOCOL_NAME": name,
+        "PROTOCOL_VERSION": ver,
+        "messages": messages,
+        "payloads": edict
+    }
+    f2 = json.dumps(pdict, indent=4)# + '\n\n' + 
     with open("protocol/protocol.json", "w") as file:
         file.write(f2)
     
@@ -130,9 +136,9 @@ def gen_payload_enums(payloads="protocol/payload_enums.csv"):
                         field_value = int(field_value)
                     enum_dict[current_message][payload_field] = field_value
 
-    f2 = json.dumps(enum_dict, indent=4)# + '\n\n' + 
-    with open("protocol/payload_enums.json", "w") as file:
-        file.write(f2)
+    #f2 = json.dumps(enum_dict, indent=4)# + '\n\n' + 
+    #with open("protocol/payload_enums.json", "w") as file:
+    #    file.write(f2)
 
     # Generate class with nested enums
     enum_dict_code = "class PayloadEnum:\n"
@@ -154,7 +160,7 @@ def gen_payload_enums(payloads="protocol/payload_enums.csv"):
     #print("Generated code:")
     #print(enum_dict_code)
 
-    return enum_dict_code
+    return (enum_dict, enum_dict_code)
     #with open("protocol/payload_enums.py", "w") as file:
     #    file.write(code)
 
