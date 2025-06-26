@@ -57,7 +57,7 @@ def generate_enums_file(message_dict):
     #with open("message_structure.py", "w") as f:
     #    f.write(code)
 
-def generate_message_definitions(csvfile="message_definitions.csv", payloads="protocol/payload_enums.py", name="default",ver=1): #TODO: relative path import problem
+def generate_message_definitions(csvfile="message_definitions.csv", payloads="protocol/payload_enums.csv", name="default",ver=1):
     """Reads the CSV, builds the message dictionary, writes it to JSON, and generates enums."""
     messages = {}
     with open(csvfile, newline='') as csvfile:
@@ -95,8 +95,7 @@ def generate_message_definitions(csvfile="message_definitions.csv", payloads="pr
     
     pname = f"protocol_{name}_v{ver}"
 
-    with open(payloads,'r') as file:
-        pe = file.read()
+    pe = gen_payload_enums(payloads=payloads)
 
     enumspy = generate_enums_file(messages)
     f = f'PROTOCOL_VERSION = {ver}\nPROTOCOL_NAME = "{name}"\n\n' + enumspy + '\n\n' + pe
@@ -108,7 +107,56 @@ def generate_message_definitions(csvfile="message_definitions.csv", payloads="pr
     with open("protocol/protocol.json", "w") as file:
         file.write(f2)
     
-    # Generate enums
+def gen_payload_enums(payloads="protocol/payload_enums.csv"): 
+    """Reads the CSV, builds the message dictionary, writes it to JSON, and generates enums."""
+    enum_dict = {}
+    with open(payloads, newline='') as csvfile:
+        reader = csv.DictReader(csvfile, delimiter=',')
+        current_message = None
+        for row in reader:
+            row = {k: (v.strip() if v is not None else "") for k, v in row.items()}
+            #print(current_message, row)
+            if row["Payload"]:
+                current_message = row["Payload"]
+                if current_message not in enum_dict:
+                    enum_dict[current_message] = {}
+            else:
+                if current_message is None:
+                    continue
+                payload_field = row["Field"]
+                if payload_field:
+                    field_value = row["Value"]
+                    if payload_field!="_info":
+                        field_value = int(field_value)
+                    enum_dict[current_message][payload_field] = field_value
+
+    f2 = json.dumps(enum_dict, indent=4)# + '\n\n' + 
+    with open("protocol/payload_enums.json", "w") as file:
+        file.write(f2)
+
+    # Generate class with nested enums
+    enum_dict_code = "class PayloadEnum:\n"
+    for payload in enum_dict:
+        enum_dict_code += f"    class {payload}(IntEnum):\n"
+        #print(payload)
+        for field in enum_dict[payload]:
+            #print(field, enum_dict[payload][field])
+            if field!="_info":
+                enum_dict_code += f"        {field} = {enum_dict[payload][field]}\n"
+            else:
+                enum_dict_code += f"        # {enum_dict[payload][field]}\n"
+        enum_dict_code += "\n"
+
+    #code = "from enum import Enum, IntEnum, auto\n\n"
+    #code += enum_dict_code
+
+    # Debug: Print the generated code
+    #print("Generated code:")
+    #print(enum_dict_code)
+
+    return enum_dict_code
+    #with open("protocol/payload_enums.py", "w") as file:
+    #    file.write(code)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate message protocol definition")

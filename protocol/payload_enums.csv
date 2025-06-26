@@ -1,3 +1,4 @@
+Payload,Field,Value
 CommandResult,,
 ,_info,Reply to Command
 ,ACCEPTED,1
@@ -50,4 +51,3 @@ MissionPhase,,
 ,LANDING,12
 ,LANDED,13
 ,SHUTDOWN,14
-

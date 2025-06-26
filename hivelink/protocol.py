@@ -174,62 +174,61 @@ Messages.Data.System.QUERY_SYSTEM_HEALTH.payload_def = []
 Messages.Data.System.QUERY_TELEMETRY.payload_def = []
 
 
-from enum import Enum, IntEnum, auto
-
-# ========== Reply PAYLOAD BYTE DEFINITIONS ==========
 class PayloadEnum:
-        
     class CommandResult(IntEnum):
         # Reply to Command
-        ACCEPTED = auto()
-        TEMPORARILY_REJECTED = auto()
-        DENIED = auto()
-        UNSUPPORTED = auto()
-        FAILED = auto()
-        IN_PROGRESS = auto()
-        CANCELLED = auto()
+        ACCEPTED = 1
+        TEMPORARILY_REJECTED = 2
+        DENIED = 3
+        UNSUPPORTED = 4
+        FAILED = 5
+        IN_PROGRESS = 6
+        CANCELLED = 7
 
     class DataError(IntEnum):
         # Reply to Data
-        NOT_FOUND = auto()
-        DEVICE_UNAVAILABLE = auto()
-        HARDWARE_ERROR = auto()
-        SOFTWARE_ERROR = auto()
-        DATABSE_ERROR = auto()
+        NOT_FOUND = 1
+        DEVICE_UNAVAILABLE = 2
+        HARDWARE_ERROR = 3
+        SOFTWARE_ERROR = 4
+        DATABASE_ERROR = 5
 
     class FlightMode(IntEnum):
-        ACRO = auto()
-        ANGLE = auto()
-        POSHOLD = auto()
-        NAV_WP = auto()
-        LOITER = auto()
-        CRUSE = auto()
-        RTH = auto()
-        LANDING = auto()
-        DISARMED = auto()
+        # 
+        ACRO = 1
+        ANGLE = 2
+        POSHOLD = 3
+        NAV_WP = 4
+        LOITER = 5
+        CRUSE = 6
+        RTH = 7
+        LANDING = 8
+        DISARMED = 9
 
     class FlightPhase(IntEnum):
-        PREFLIGHT = auto()
-        TAKEOFF = auto()
-        CRUISE = auto()
-        MISSION_OPERATION = auto()
-        RTB = auto()
-        LANDING = auto()
-        POSTFLIGHT = auto()
+        # 
+        PREFLIGHT = 1
+        TAKEOFF = 2
+        CRUISE = 3
+        MISSION_OPERATION = 4
+        RTB = 5
+        LANDING = 6
+        POSTFLIGHT = 7
 
     class MissionPhase(IntEnum):
-        BOOTING = auto()
-        ONLINE = auto()
-        MISSION_RECEIVED = auto()
-        READY_TAKEOFF = auto()
-        TAKEOFF_COMPLETE = auto()
-        ENROUTE = auto()
-        AT_ASSEMBLY = auto()
-        HOLDING = auto()
-        PROCEEDING = auto()
-        BINGO = auto()
-        RTB = auto()
-        LANDING = auto()
-        LANDED = auto()
-        SHUTDOWN = auto()
+        # 
+        BOOTING = 1
+        ONLINE = 2
+        MISSION_RECEIVED = 3
+        READY_TAKEOFF = 4
+        TAKEOFF_COMPLETE = 5
+        ENROUTE = 6
+        AT_ASSEMBLY = 7
+        HOLDING = 8
+        PROCEEDING = 9
+        BINGO = 10
+        RTB = 11
+        LANDING = 12
+        LANDED = 13
+        SHUTDOWN = 14
 
