@@ -1,0 +1,19 @@
+{
+    "my_name": "example",
+    "my_id": "example1",
+
+    "meshtastic": {
+        "use": true,
+        "radio_serial": "/dev/ttyUSB0",
+        "app_portnum": 260
+    },
+    "udp": {
+        "use": true,
+        "host": "192.0.0.1",
+        "port": 5555,
+        "use_multicast": true,
+        "multicast_group": "239.0.0.1",
+        "multicast_port": 5550
+    },
+    "nodemap": null
+}
