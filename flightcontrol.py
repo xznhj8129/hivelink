@@ -10,7 +10,11 @@ from unavlib.modules.utils import inavutil
 
 
 class UAVmeta():
-    def __init__(self, protocol="msp", firmware="betaflight", vehicle_type="copter"):
+    def __init__(self, 
+        protocol="msp", 
+        firmware="betaflight", 
+        vehicle_type="copter"
+        ):
         p = protocol.lower()
         f = firmware.lower()
         if p!="msp" and p!="mavlink":

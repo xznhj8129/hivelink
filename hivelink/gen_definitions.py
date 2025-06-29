@@ -57,7 +57,7 @@ def generate_enums_file(message_dict):
     #with open("message_structure.py", "w") as f:
     #    f.write(code)
 
-def generate_message_definitions(csvfile="message_definitions.csv", payloads="protocol/payload_enums.csv", name="default",ver=1):
+def generate_message_definitions(csvfile="message_definitions.csv", payloads="protocol/payload_enums.csv", name="default",ver=1, outfile="protocol/protocol.json"):
     """Reads the CSV, builds the message dictionary, writes it to JSON, and generates enums."""
     messages = {}
     with open(csvfile, newline='') as csvfile:
@@ -110,7 +110,7 @@ def generate_message_definitions(csvfile="message_definitions.csv", payloads="pr
         "payloads": edict
     }
     f2 = json.dumps(pdict, indent=4)# + '\n\n' + 
-    with open("protocol/protocol.json", "w") as file:
+    with open(outfile, "w") as file:
         file.write(f2)
     
 def gen_payload_enums(payloads="protocol/payload_enums.csv"): 
@@ -169,18 +169,10 @@ if __name__ == '__main__':
     parser.add_argument("--csvfile", default="message_definitions.csv", help="Message definition file")
     parser.add_argument("--name", default="default", help="Protocol name")
     parser.add_argument("--version", default=1, help="Protocol version int")
-    parser.add_argument("--out", default="message_definitions.json", help="Output JSON file")
+    parser.add_argument("--out", default="protocol/protocol.json", help="Output JSON file")
     args = parser.parse_args()
 
-    generate_message_definitions(csvfile=args.csvfile,name=args.name, ver=args.version)
-    
-    #TODO:     from .message_structure import * #leave as *
-    #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    #ImportError: attempted relative import with no known parent package
-    #from msglib import MessageDefinitions
-    #protodefs = MessageDefinitions()
-    #print("Structure:")
-    #pprint.pprint(protodefs.messages)
+    generate_message_definitions(csvfile=args.csvfile,name=args.name, ver=args.version, outfile=args.out)
     
     # Test the generated enums
     from hivelink.protocol import Messages
