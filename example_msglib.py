@@ -57,6 +57,9 @@ print("Message string:", message_str_from_id(messageid(enum_member)))
 
 msg_enum = Messages.Testing.System.TEXTMSG
 msg_id = messageid(msg_enum)
+print(msg_enum)
+print(msg_id)
+print(message_str_from_id(msg_id))
 payload = msg_enum.payload(
     textdata=b"testing"
 )

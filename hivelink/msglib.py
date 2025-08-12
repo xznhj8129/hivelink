@@ -157,14 +157,16 @@ def create_payload(self, **kwargs):
             expected_type = type_mapping.get(field_info["type"])
             if expected_type is None:
                 raise ValueError(f"Protocol Error: Unknown datatype '{field_info['type']}' for field '{key}'")
-            if not isinstance(value, expected_type):
+            if expected_type is str and isinstance(value, bytes):
+                pass
+            elif not isinstance(value, expected_type):
                 raise TypeError(f"Protocol Error: Field '{key}' expects {expected_type.__name__}, got {type(value).__name__}")
 
         plist.append(value)
 
     return plist
 
-def encode_message(msg_enum, payload):
+def encode_message(msg_enum, payload=[]):
     category, subcategory, msgtype = messageid(msg_enum)
     return msgpack.packb([category, subcategory, msgtype, payload])
 
@@ -175,8 +177,6 @@ def decode_message(data):
         raise ValueError(f"Protocol Error: No payload definition for {enum_member}")
 
     payload_def = enum_member.payload_def
-
-    payload_def = enum_member.payload_def
     if len(payload_def) != len(payload_list):
         raise ValueError(f"Protocol Error: Payload list length {len(payload_list)} does not match definition {len(payload_def)}")
 
@@ -184,8 +184,8 @@ def decode_message(data):
     for field, value in zip(payload_def, payload_list):
         field_name = field["name"]
         key = field_name[len("PayloadEnum_"):] if field_name.startswith("PayloadEnum_") else field_name
+        datatype = field.get("datatype")
         if field_name.startswith("PayloadEnum_"):
-            datatype = field.get("datatype")
             if datatype:
                 try:
                     enum_class = getattr(PayloadEnum, datatype)
@@ -194,6 +194,8 @@ def decode_message(data):
                     raise ValueError(f"Protocol Error: Invalid value {value} for enum {datatype}")
                 except AttributeError as e:
                     raise ValueError(f"Protocol Error: Enum class {datatype} not found in PayloadEnum")
+        elif datatype=="string":
+            value = value.decode('utf-8')
 
         payload_dict[key] = value
 

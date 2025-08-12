@@ -1,5 +1,5 @@
 {
-    "PROTOCOL_NAME": "default",
+    "PROTOCOL_NAME": "test",
     "PROTOCOL_VERSION": 1,
     "messages": {
         "Heartbeat": {
@@ -12,7 +12,7 @@
                 "TEXTMSG": [
                     {
                         "name": "textdata",
-                        "datatype": "bytes",
+                        "datatype": "string",
                         "bitmask": false
                     }
                 ],
@@ -114,9 +114,75 @@
                 "NAV": [],
                 "RADIO": [],
                 "PAYLOAD": []
+            },
+            "AP": {
+                "HL_TELEM": [
+                    {
+                        "name": "mode_str",
+                        "datatype": "string",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "airspeed",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "groundspeed",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "heading",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "msl_alt",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "packed_mgrs",
+                        "datatype": "string",
+                        "bitmask": false
+                    }
+                ]
             }
         },
         "Command": {
+            "AP": {
+                "ARM": [
+                    {
+                        "name": "arm",
+                        "datatype": "int",
+                        "bitmask": false
+                    }
+                ],
+                "DISARM": [],
+                "SET_MODE": [
+                    {
+                        "name": "mode_str",
+                        "datatype": "bytes",
+                        "bitmask": false
+                    }
+                ],
+                "TAKEOFF": [
+                    {
+                        "name": "alt_m",
+                        "datatype": "int",
+                        "bitmask": false
+                    }
+                ],
+                "LAND": [],
+                "SELECT_MISSION": [
+                    {
+                        "name": "seq",
+                        "datatype": "int",
+                        "bitmask": false
+                    }
+                ]
+            },
             "System": {
                 "ACTIVATE": [],
                 "SHUTDOWN": [],

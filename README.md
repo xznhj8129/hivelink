@@ -11,7 +11,8 @@ Significantly simplified and integrated with my other libraries\
 ## Planned Features:
 - Mesh/Swarm Architecture: Explicit support for routing in a multi-hop mesh network
 - Uses Msgpack for simple binary packing and maximum byte efficiency
-- Cursor-on-Target (CoT) Support: Dedicated support for CoT
+- MQTT support
+- Cursor-on-Target (CoT) support: Dedicated support for CoT
 - Optional Authentification and Security
 - MAVLink and MSP support
 
@@ -19,8 +20,6 @@ Significantly simplified and integrated with my other libraries\
 - UDP Uni/Multicast
 - TCP
 - Meshtastic
-- APRS*
-- ???
 
 ## Requirements:
 - [FrogCoT](https://github.com/xznhj8129/frogcot)

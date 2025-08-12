@@ -4,6 +4,5 @@ frogtastic
 frogcot
 froggeolib
 pymavlink
-unavlib
 asyncio
-meshcore
+paho-mqtt

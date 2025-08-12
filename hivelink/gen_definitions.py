@@ -7,23 +7,11 @@ import argparse
 from pprint import pformat
 
 def generate_enums_file(message_dict):
-    
     # Generate MessageCategory enum
     category_code = "# This file is auto generated, refer to gen_definitions.py\n\nclass MessageCategory(Enum):\n"
     categories = list(message_dict.keys())
     for i, category in enumerate(categories, start=1):
         category_code += f"    {category} = {i}\n"
-
-    # Assign values and strings to categories and subcategories
-    values_code = "\n\n"
-    for category in categories:
-        subcategories = list(message_dict[category].keys())
-        for i, subcategory in enumerate(subcategories, start=1):
-            values_code += f"Messages.{category}.{subcategory}.value_subcat = {i}\n"
-            values_code += f'Messages.{category}.{subcategory}.str = {subcategory!r}\n'
-    for i, category in enumerate(categories, start=1):
-        values_code += f"Messages.{category}.value_cat = {i}\n"
-        values_code += f'Messages.{category}.str = {category!r}\n'
 
     # Generate Messages class with nested enums
     messages_code = "class Messages:\n"
@@ -34,6 +22,17 @@ def generate_enums_file(message_dict):
             for message in message_dict[category][subcategory]:
                 messages_code += f"            {message} = auto()\n"
 
+    # Assign values and strings to categories and subcategories
+    values_code = "\n\n"
+    for category in categories:
+        subcategories = list(message_dict[category].keys())
+        for i, subcategory in enumerate(subcategories, start=1):
+            values_code += f"Messages.{category}.{subcategory}.value_subcat = {i}\n"
+            values_code += f"Messages.{category}.{subcategory}.str = {subcategory!r}\n"
+    for i, category in enumerate(categories, start=1):
+        values_code += f"Messages.{category}.value_cat = {i}\n"
+        values_code += f"Messages.{category}.str = {category!r}\n"
+
     # Assign payload definitions
     payload_code = ""
     for category in categories:
@@ -42,20 +41,28 @@ def generate_enums_file(message_dict):
                 payload = message_dict[category][subcategory][message]
                 payload_code += f"Messages.{category}.{subcategory}.{message}.payload_def = {repr(payload)}\n"
 
+    # NEW: static introspection so enum_member.category works without any runtime helpers
+    introspection_code = "\n"
+    for i, category in enumerate(categories, start=1):
+        for j, subcategory in enumerate(message_dict[category].keys(), start=1):
+            introspection_code += (
+                f"Messages.{category}.{subcategory}.category = Messages.{category}\n"
+                f"Messages.{category}.{subcategory}.category_name = {category!r}\n"
+                f"Messages.{category}.{subcategory}.category_value = {i}\n"
+                f"Messages.{category}.{subcategory}.subcategory_name = {subcategory!r}\n"
+                f"Messages.{category}.{subcategory}.subcategory_value = {j}\n"
+            )
+
     # Combine all parts
     code = "from enum import Enum, IntEnum, auto\n\n"
     code += category_code + "\n"
     code += messages_code
     code += values_code
     code += payload_code
+    code += introspection_code
 
-    # Debug: Print the generated code
-    #print("Generated code:")
-    #print(code)
     return code
-    # Write to file
-    #with open("message_structure.py", "w") as f:
-    #    f.write(code)
+
 
 def generate_message_definitions(csvfile="message_definitions.csv", payloads="protocol/payload_enums.csv", name="default",ver=1, outfile="protocol/protocol.json"):
     """Reads the CSV, builds the message dictionary, writes it to JSON, and generates enums."""

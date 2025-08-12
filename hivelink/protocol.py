@@ -1,5 +1,5 @@
 PROTOCOL_VERSION = 1
-PROTOCOL_NAME = "default"
+PROTOCOL_NAME = "test"
 
 from enum import Enum, IntEnum, auto
 
@@ -35,7 +35,16 @@ class Messages:
             NAV = auto()
             RADIO = auto()
             PAYLOAD = auto()
+        class AP(Enum):
+            HL_TELEM = auto()
     class Command:
+        class AP(Enum):
+            ARM = auto()
+            DISARM = auto()
+            SET_MODE = auto()
+            TAKEOFF = auto()
+            LAND = auto()
+            SELECT_MISSION = auto()
         class System(Enum):
             ACTIVATE = auto()
             SHUTDOWN = auto()
@@ -94,9 +103,13 @@ Messages.Status.Mission.value_subcat = 1
 Messages.Status.Mission.str = 'Mission'
 Messages.Status.System.value_subcat = 2
 Messages.Status.System.str = 'System'
-Messages.Command.System.value_subcat = 1
+Messages.Status.AP.value_subcat = 3
+Messages.Status.AP.str = 'AP'
+Messages.Command.AP.value_subcat = 1
+Messages.Command.AP.str = 'AP'
+Messages.Command.System.value_subcat = 2
 Messages.Command.System.str = 'System'
-Messages.Command.Mission.value_subcat = 2
+Messages.Command.Mission.value_subcat = 3
 Messages.Command.Mission.str = 'Mission'
 Messages.Event.Mission.value_subcat = 1
 Messages.Event.Mission.str = 'Mission'
@@ -119,7 +132,7 @@ Messages.Event.str = 'Event'
 Messages.Data.value_cat = 6
 Messages.Data.str = 'Data'
 Messages.Heartbeat.System.HEARTBEAT.payload_def = []
-Messages.Testing.System.TEXTMSG.payload_def = [{'name': 'textdata', 'datatype': 'bytes', 'bitmask': False}]
+Messages.Testing.System.TEXTMSG.payload_def = [{'name': 'textdata', 'datatype': 'string', 'bitmask': False}]
 Messages.Testing.System.BINMSG.payload_def = [{'name': 'data', 'datatype': 'bytes', 'bitmask': False}]
 Messages.Status.Mission.MISSION_PHASE.payload_def = [{'name': 'MissionPhase', 'datatype': 'enum', 'bitmask': False}]
 Messages.Status.System.INAV.payload_def = [{'name': 'inavmodes', 'datatype': 'int', 'bitmask': False}, {'name': 'airspeed', 'datatype': 'int', 'bitmask': False}, {'name': 'groundspeed', 'datatype': 'int', 'bitmask': False}, {'name': 'heading', 'datatype': 'int', 'bitmask': False}, {'name': 'msl_alt', 'datatype': 'int', 'bitmask': False}, {'name': 'packed_mgrs', 'datatype': 'bytes', 'bitmask': False}]
@@ -132,6 +145,13 @@ Messages.Status.System.SYSTEMS.payload_def = []
 Messages.Status.System.NAV.payload_def = []
 Messages.Status.System.RADIO.payload_def = []
 Messages.Status.System.PAYLOAD.payload_def = []
+Messages.Status.AP.HL_TELEM.payload_def = [{'name': 'mode_str', 'datatype': 'string', 'bitmask': False}, {'name': 'airspeed', 'datatype': 'int', 'bitmask': False}, {'name': 'groundspeed', 'datatype': 'int', 'bitmask': False}, {'name': 'heading', 'datatype': 'int', 'bitmask': False}, {'name': 'msl_alt', 'datatype': 'int', 'bitmask': False}, {'name': 'packed_mgrs', 'datatype': 'string', 'bitmask': False}]
+Messages.Command.AP.ARM.payload_def = [{'name': 'arm', 'datatype': 'int', 'bitmask': False}]
+Messages.Command.AP.DISARM.payload_def = []
+Messages.Command.AP.SET_MODE.payload_def = [{'name': 'mode_str', 'datatype': 'bytes', 'bitmask': False}]
+Messages.Command.AP.TAKEOFF.payload_def = [{'name': 'alt_m', 'datatype': 'int', 'bitmask': False}]
+Messages.Command.AP.LAND.payload_def = []
+Messages.Command.AP.SELECT_MISSION.payload_def = [{'name': 'seq', 'datatype': 'int', 'bitmask': False}]
 Messages.Command.System.ACTIVATE.payload_def = []
 Messages.Command.System.SHUTDOWN.payload_def = []
 Messages.Command.System.SET_FLIGHT_MODE.payload_def = []
@@ -172,6 +192,67 @@ Messages.Data.System.QUERY_DATALINK_STATUS.payload_def = []
 Messages.Data.System.QUERY_NETWORK_STATUS.payload_def = []
 Messages.Data.System.QUERY_SYSTEM_HEALTH.payload_def = []
 Messages.Data.System.QUERY_TELEMETRY.payload_def = []
+
+Messages.Heartbeat.System.category = Messages.Heartbeat
+Messages.Heartbeat.System.category_name = 'Heartbeat'
+Messages.Heartbeat.System.category_value = 1
+Messages.Heartbeat.System.subcategory_name = 'System'
+Messages.Heartbeat.System.subcategory_value = 1
+Messages.Testing.System.category = Messages.Testing
+Messages.Testing.System.category_name = 'Testing'
+Messages.Testing.System.category_value = 2
+Messages.Testing.System.subcategory_name = 'System'
+Messages.Testing.System.subcategory_value = 1
+Messages.Status.Mission.category = Messages.Status
+Messages.Status.Mission.category_name = 'Status'
+Messages.Status.Mission.category_value = 3
+Messages.Status.Mission.subcategory_name = 'Mission'
+Messages.Status.Mission.subcategory_value = 1
+Messages.Status.System.category = Messages.Status
+Messages.Status.System.category_name = 'Status'
+Messages.Status.System.category_value = 3
+Messages.Status.System.subcategory_name = 'System'
+Messages.Status.System.subcategory_value = 2
+Messages.Status.AP.category = Messages.Status
+Messages.Status.AP.category_name = 'Status'
+Messages.Status.AP.category_value = 3
+Messages.Status.AP.subcategory_name = 'AP'
+Messages.Status.AP.subcategory_value = 3
+Messages.Command.AP.category = Messages.Command
+Messages.Command.AP.category_name = 'Command'
+Messages.Command.AP.category_value = 4
+Messages.Command.AP.subcategory_name = 'AP'
+Messages.Command.AP.subcategory_value = 1
+Messages.Command.System.category = Messages.Command
+Messages.Command.System.category_name = 'Command'
+Messages.Command.System.category_value = 4
+Messages.Command.System.subcategory_name = 'System'
+Messages.Command.System.subcategory_value = 2
+Messages.Command.Mission.category = Messages.Command
+Messages.Command.Mission.category_name = 'Command'
+Messages.Command.Mission.category_value = 4
+Messages.Command.Mission.subcategory_name = 'Mission'
+Messages.Command.Mission.subcategory_value = 3
+Messages.Event.Mission.category = Messages.Event
+Messages.Event.Mission.category_name = 'Event'
+Messages.Event.Mission.category_value = 5
+Messages.Event.Mission.subcategory_name = 'Mission'
+Messages.Event.Mission.subcategory_value = 1
+Messages.Event.System.category = Messages.Event
+Messages.Event.System.category_name = 'Event'
+Messages.Event.System.category_value = 5
+Messages.Event.System.subcategory_name = 'System'
+Messages.Event.System.subcategory_value = 2
+Messages.Data.Mission.category = Messages.Data
+Messages.Data.Mission.category_name = 'Data'
+Messages.Data.Mission.category_value = 6
+Messages.Data.Mission.subcategory_name = 'Mission'
+Messages.Data.Mission.subcategory_value = 1
+Messages.Data.System.category = Messages.Data
+Messages.Data.System.category_name = 'Data'
+Messages.Data.System.category_value = 6
+Messages.Data.System.subcategory_name = 'System'
+Messages.Data.System.subcategory_value = 2
 
 
 class PayloadEnum:

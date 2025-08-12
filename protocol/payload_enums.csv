@@ -1,5 +1,5 @@
 Payload,Field,Value
-CommandResult,,
+CommandResult,,1
 ,_info,Reply to Command
 ,ACCEPTED,1
 ,TEMPORARILY_REJECTED,2
@@ -8,14 +8,14 @@ CommandResult,,
 ,FAILED,5
 ,IN_PROGRESS,6
 ,CANCELLED,7
-DataError,,
+DataError,,2
 ,_info,Reply to Data
 ,NOT_FOUND,1
 ,DEVICE_UNAVAILABLE,2
 ,HARDWARE_ERROR,3
 ,SOFTWARE_ERROR,4
 ,DATABASE_ERROR,5
-FlightMode,,
+FlightMode,,3
 ,_info,
 ,ACRO,1
 ,ANGLE,2
@@ -26,7 +26,7 @@ FlightMode,,
 ,RTH,7
 ,LANDING,8
 ,DISARMED,9
-FlightPhase,,
+FlightPhase,,4
 ,_info,
 ,PREFLIGHT,1
 ,TAKEOFF,2
@@ -35,7 +35,7 @@ FlightPhase,,
 ,RTB,5
 ,LANDING,6
 ,POSTFLIGHT,7
-MissionPhase,,
+MissionPhase,,5
 ,_info,
 ,BOOTING,1
 ,ONLINE,2
