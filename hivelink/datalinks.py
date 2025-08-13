@@ -10,11 +10,15 @@ import sys
 import msgpack
 from frogtastic import MeshtasticClient
 import traceback
-import logging, base64, faulthandler
+import logging, base64, faulthandler, enum, math
+import paho.mqtt.client as mqtt
+from hivelink.protocol import *
+from hivelink.msglib import *
 
-# at top of file (once)
-import base64, enum, math, sys, traceback
-
+PROTOCOL_VERSION = 1
+MAX_MESH_PACKET_SIZE = 220  # Total packet size (bytes)
+SYNC_BYTE = 0xFA
+crc16 = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 B64_TAG = "__b64__"
 
 def _to_jsonable(obj):
@@ -34,43 +38,27 @@ def _to_jsonable(obj):
         return [_to_jsonable(v) for v in obj]
     raise TypeError(f"Not JSON-serializable: {type(obj).__name__}")
 
-
-# MQTT is optional
-try:
-    import paho.mqtt.client as mqtt
-except ImportError:
-    mqtt = None
-
-# Pull the message schema and codec in here so MQTT routing can live here
-from hivelink.protocol import *
-from hivelink.msglib import *
-
-PROTOCOL_VERSION = 1
-MAX_MESH_PACKET_SIZE = 220  # Total packet size (bytes)
-SYNC_BYTE = 0xFA
-crc16 = crcmod.predefined.mkCrcFun('crc-ccitt-false')
-
-
 # --- UDP Packet Structure Definition ---
-# [SYNC_BYTE, payload length, checksum, source id, destination id, payload]
+# [--removed/SYNC_BYTE/--, payload length, checksum, source id, destination id, payload]
 def encode_udp_packet(source: str, destination: Optional[str], payload: bytes) -> bytes:
     s = source.encode("utf-8")
     d = (destination or "").encode("utf-8")
     checksum = crc16(s + d + payload)
     plen = len(payload)
-    packet = msgpack.packb([SYNC_BYTE, plen, checksum, s, d, payload])
+    packet = msgpack.packb([plen, checksum, s, d, payload])
     return packet
 
 
 def decode_udp_packet(packet: bytes) -> Tuple[str, str, bytes]:
     data = msgpack.unpackb(packet, use_list=True)
-    if len(data) != 6:
+    if len(data) != 5: #6
         raise ValueError("Protocol Error: Packet length mismatch.")
     else:
-        syncbyte, length, checksum, source, destination, payload = data
+        #syncbyte, length, checksum, source, destination, payload = data
+        length, checksum, source, destination, payload = data
 
-    if syncbyte != SYNC_BYTE:
-        raise ValueError("Protocol Error: Sync byte mismatch")
+    #if syncbyte != SYNC_BYTE:
+    #    raise ValueError("Protocol Error: Sync byte mismatch")
 
     plen = len(payload)
     if plen != length:
@@ -93,6 +81,7 @@ class DatalinkInterface:
         wlan_device: Optional[str] = None,
         radio_port: Optional[str] = None,
         meshtastic_dataport: int = 260,
+        meshtastic_channel: int = 0,
         socket_host: str = "127.0.0.1",
         socket_port: int = 5555,
         my_name: str = "",
@@ -100,7 +89,6 @@ class DatalinkInterface:
         nodemap: Dict[str, Dict[str, Any]] = {},
         multicast_group: str = "",
         multicast_port: Optional[int] = None,
-        # MQTT config (all optional)
         mqtt_enable: bool = False,
         mqtt_broker: str = "",
         mqtt_port: int = 1883,
@@ -113,27 +101,31 @@ class DatalinkInterface:
         if not (use_meshtastic or use_udp):
             raise ValueError("At least one datalinks mode must be enabled.")
 
-        self.use_meshtastic = use_meshtastic
-        self.use_multicast = use_multicast
-        self.use_udp = use_udp
-        self.radio_port = radio_port
-        self.link_port = meshtastic_dataport
-        self.my_name = my_name
-        self.my_id = my_id
         self.nodemap = nodemap
 
-        # Do not override host/port from nodemap here; caller passes the right ones
+        self.use_multicast = use_multicast
+        self.use_udp = use_udp
+        self.my_name = my_name
+
         self.socket_host = socket_host
         self.socket_port = socket_port
 
         self.udp_sock = None
         self.multicast_sock = None
-        self.mesh_client = None
         self.rx_buffer: List[Dict[str, Any]] = []
         self.running = False
         self.loop = asyncio.get_event_loop()
         self.meshmap: Dict[int, str] = {}
 
+        # Meshtastic
+        self.use_meshtastic = use_meshtastic
+        self.meshid = my_id
+        self.mesh_client = None
+        self.radio_port = radio_port
+        self.link_port = meshtastic_dataport
+        self.meshtastic_channel = meshtastic_channel
+
+        # Multicast
         self.multicast_group = multicast_group
         self.multicast_port = multicast_port if multicast_port is not None else self.socket_port
 
@@ -235,10 +227,7 @@ class DatalinkInterface:
         # Subscribe to commands to any dest; incumbent gating happens in handler
         self.mqtt_client.subscribe(f"{self.mqtt_base}/to/+/+/+/+")
         # Presence
-        try:
-            self.mqtt_client.publish(f"{self.mqtt_base}/from/{self.my_name}/status", b"online", qos=1, retain=True)
-        except Exception:
-            pass
+        self.mqtt_client.publish(f"{self.mqtt_base}/from/{self.my_name}/status", b"online", qos=1, retain=True)
 
     def _on_mqtt_disconnect(self, *_args, **_kwargs):
         self._mqtt_connected = False
@@ -292,14 +281,10 @@ class DatalinkInterface:
                     pass
 
         except Exception as e:
-            # keep the short warning if you want
             warnings.warn(f"[MQTT] inbound error: {e!r}")
-            try:
-                tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
-                sys.__stderr__.write(tb)
-                sys.__stderr__.flush()
-            except Exception:
-                pass
+            tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+            sys.__stderr__.write(tb)
+            sys.__stderr__.flush()
 
 
     # ---------- Lifecycle ----------
@@ -342,11 +327,10 @@ class DatalinkInterface:
         self.map_mesh_nodes()
         print("Connected to interfaces")
         if self.use_meshtastic and self.mesh_client:
-            try:
-                meshid = self.mesh_client.meshint.getMyNodeInfo()
-                print(f"[INIT] My node ID: {meshid}")
-            except Exception:
-                pass
+            self.meshid = self.mesh_client.meshint.getMyNodeInfo()['num']
+            print(f"[INIT] My meshtastic ID: {self.meshid}")    
+        msg = Messages.Network.System.ONLINE
+        self.send(encode_message(msg), dest="", meshtastic=True, multicast=True, udp=True)
 
     def stop(self):
         self.running = False
@@ -420,6 +404,18 @@ class DatalinkInterface:
                         warnings.warn(f"Datalink Multicast listen error: {str(e)}")
             await asyncio.sleep(0.1)
 
+    def _publish_to_mqtt(self, src: str, intf: str, enum_member, decoded_payload: dict, tstamp: float):
+        if not (self.mqtt_enable and self.mqtt_client and self._mqtt_connected):
+            return
+        try:
+            topic = self._topic_from_msg(enum_member)
+            env = self._json_envelope(intf, enum_member, decoded_payload, src, tstamp)
+            self.mqtt_client.publish(topic, env, qos=0, retain=False)
+        except Exception as e:
+            sys.__stderr__.write(f"MQTT publish failed: {e}\n")
+            traceback.print_exc(file=sys.__stderr__)
+            sys.__stderr__.flush()
+
     def send(
         self,
         data: bytes,
@@ -429,6 +425,8 @@ class DatalinkInterface:
         multicast: bool = False,
     ) -> bool:
         # UDP and Multicast
+        sent = False
+
         try:
             if self.use_udp:
                 if multicast and self.multicast_group != "":
@@ -439,14 +437,14 @@ class DatalinkInterface:
                         send_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
                         encdat = encode_udp_packet(source=self.my_name, destination=dest, payload=data)
                         send_sock.sendto(encdat, (self.multicast_group, self.multicast_port))
-                        return True
+                        sent = True
                 elif dest in self.nodemap and udp:
                     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as send_sock:
                         send_sock.settimeout(2.0)
                         addr = self.nodemap[dest]["ip"]
                         encdat = encode_udp_packet(source=self.my_name, destination=dest, payload=data)
                         send_sock.sendto(encdat, tuple(addr))
-                        return True
+                        sent = True
         except Exception as e:
             warnings.warn(f"Datalink UDP Send failed: {str(e)}")
             return False
@@ -459,26 +457,17 @@ class DatalinkInterface:
                     data,
                     destinationId=dest_meshid,
                     portNum=self.link_port,
+                    channelIndex=self.meshtastic_channel,
+                    hopLimit=None,
                     wantAck=True,
                 )
-                return True
+                sent = True
         except Exception as e:
             warnings.warn(f"Datalink Meshtastic send failed: {str(e)}")
             return False
 
-        return False
+        return sent
 
-    def _publish_to_mqtt(self, src: str, intf: str, enum_member, decoded_payload: dict, tstamp: float):
-        if not (self.mqtt_enable and self.mqtt_client and self._mqtt_connected):
-            return
-        try:
-            topic = self._topic_from_msg(enum_member)
-            env = self._json_envelope(intf, enum_member, decoded_payload, src, tstamp)
-            self.mqtt_client.publish(topic, env, qos=0, retain=False)
-        except Exception as e:
-            sys.__stderr__.write(f"MQTT publish failed: {e}\n")
-            traceback.print_exc(file=sys.__stderr__)
-            sys.__stderr__.flush()
 
     def receive(self) -> List[Dict[str, Any]]:
         # Pull from Meshtastic mailbox
@@ -504,13 +493,9 @@ class DatalinkInterface:
 
         # Presence update and optional MQTT publish (decoded here; the caller still gets raw)
         for msg in messages:
-            try:
-                self.update_localnode_seen(msg["from"], msg["intf"], ts=msg.get("time", time.time()))
-                enum_member, decoded_payload = decode_message(msg["data"])
-                self._publish_to_mqtt(msg["from"], msg["intf"], enum_member, decoded_payload, msg.get("time", time.time()))
-            except Exception:
-                # Keep receive resilient; decoding for MQTT is optional
-                pass
+            self.update_localnode_seen(msg["from"], msg["intf"], ts=msg.get("time", time.time()))
+            enum_member, decoded_payload = decode_message(msg["data"])
+            self._publish_to_mqtt(msg["from"], msg["intf"], enum_member, decoded_payload, msg.get("time", time.time()))
 
         return messages
 

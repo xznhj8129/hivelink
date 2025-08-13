@@ -17,6 +17,7 @@ from hivelink.datalinks import *
 from hivelink.msglib import *
 import froggeolib
 import msgpack
+import traceback
 
 from pymavlink import mavutil
 
@@ -173,16 +174,6 @@ class MavlinkAP:
         # Start mission by switching to AUTO
         self.set_mode("AUTO")
 
-    # ----- telemetry marshalling -----
-    def mgrs_bytes(self) -> bytes:
-        try:
-            if self.lat is None or self.lon is None:
-                return b""
-            mgrs = froggeolib.latlon_to_mgrs(self.lat, self.lon, precision=5)
-            return mgrs.encode("ascii", errors="ignore")
-        except Exception:
-            return b""
-
 
 # ----- Hivelink loops -----
 async def hivelink_command_loop(datalinks: DatalinkInterface, ap: MavlinkAP):
@@ -191,33 +182,33 @@ async def hivelink_command_loop(datalinks: DatalinkInterface, ap: MavlinkAP):
         try:
             for msg in datalinks.receive():
                 try:
-                    enum_member, payload = decode_message(msg["data"])
+                    msgtype, payload = decode_message(msg["data"])
                 except Exception as e:
                     print(f"[HL] decode error: {e}")
                     continue
 
                 # Command handlers
                 try:
-                    if enum_member == Messages.Command.AP.ARM:
+                    if msgtype == Messages.Command.AP.ARM:
                         arm = int(payload.get("arm", 1)) != 0
                         ap.arm(arm)
                         print(f"[CMD] ARM={arm}")
-                    elif enum_member == Messages.Command.AP.DISARM:
+                    elif msgtype == Messages.Command.AP.DISARM:
                         ap.arm(False)
                         print(f"[CMD] DISARM")
-                    elif enum_member == Messages.Command.AP.SET_MODE:
+                    elif msgtype == Messages.Command.AP.SET_MODE:
                         mbytes = payload.get("mode_str", b"")
                         mode = (mbytes.decode("utf-8", errors="ignore") if isinstance(mbytes, (bytes, bytearray)) else str(mbytes)).strip()
                         ok = ap.set_mode(mode)
                         print(f"[CMD] SET_MODE {mode} -> {ok}")
-                    elif enum_member == Messages.Command.AP.TAKEOFF:
+                    elif msgtype == Messages.Command.AP.TAKEOFF:
                         alt_m = int(payload.get("alt_m", 10))
                         ap.takeoff(alt_m)
                         print(f"[CMD] TAKEOFF alt={alt_m}m")
-                    elif enum_member == Messages.Command.AP.LAND:
+                    elif msgtype == Messages.Command.AP.LAND:
                         ap.land()
                         print(f"[CMD] LAND")
-                    elif enum_member == Messages.Command.AP.SELECT_MISSION:
+                    elif msgtype == Messages.Command.AP.SELECT_MISSION:
                         seq = int(payload.get("seq", 0))
                         ap.select_mission(seq)
                         print(f"[CMD] SELECT_MISSION seq={seq}")
@@ -239,19 +230,24 @@ async def hivelink_telem_loop(datalinks: DatalinkInterface, ap: MavlinkAP, rate_
         try:
             # Build HL_TELEM
             msg = Messages.Status.AP.HL_TELEM
+            lat = ap.lat if ap.lat else 0
+            lon = ap.lon if ap.lon else 0
+            full_mgrs = froggeolib.latlon_to_mgrs(lat, lon, precision=5)
+            pos = froggeolib.encode_mgrs_binary(full_mgrs, precision=5)
             payload = msg.payload(
                 mode_str=ap.mode_str.encode("utf-8", errors="ignore"),
                 airspeed=int(ap.airspeed),
                 groundspeed=int(ap.groundspeed),
                 heading=int(ap.heading),
                 msl_alt=int(ap.msl_alt),
-                packed_mgrs=ap.mgrs_bytes(),
+                packed_mgrs=pos,
             )
             encoded = encode_message(msg, payload)
             # Broadcast over all available links; adapt as you like
-            datalinks.send(encoded, dest="", udp=True, meshtastic=True, multicast=True)
+            datalinks.send(encoded, dest="", meshtastic=True)
         except Exception as e:
             print(f"[HL] telem error: {e}")
+            print(traceback.format_exception(type(e), e, e.__traceback__))
         await asyncio.sleep(period)
 
 
@@ -261,13 +257,6 @@ async def main():
     parser.add_argument("--meshtastic_device", default="", help="Serial path to Meshtastic device")
     parser.add_argument("--mavlink", default="udp:127.0.0.1:14550", help="pymavlink connection string")
     parser.add_argument("--hl_rate", type=float, default=1.0, help="high-latency telemetry rate Hz")
-
-    # MQTT (optional I/O)
-    parser.add_argument("--mqtt_broker", default="", help="MQTT broker host (enables MQTT I/O if set)")
-    parser.add_argument("--mqtt_port", type=int, default=1883, help="MQTT broker port")
-    parser.add_argument("--mqtt_client_id", default="", help="MQTT client id (defaults to my_id if empty)")
-    parser.add_argument("--mqtt_user", default=None, help="MQTT username")
-    parser.add_argument("--mqtt_pass", default=None, help="MQTT password")
 
     args = parser.parse_args()
 
@@ -293,13 +282,6 @@ async def main():
         nodemap=nodemap,
         multicast_group="239.0.0.1",
         multicast_port=5550,
-        mqtt_enable=bool(args.mqtt_broker),
-        mqtt_broker=args.mqtt_broker,
-        mqtt_port=args.mqtt_port,
-        mqtt_client_id=(args.mqtt_client_id if args.mqtt_client_id else my_name),
-        mqtt_username=args.mqtt_user,
-        mqtt_password=args.mqtt_pass,
-        mqtt_base="/hivelink/v1",
         incumbent_window=600,
     )
 

@@ -5,15 +5,25 @@
     "meshtastic": {
         "use": true,
         "radio_serial": "/dev/ttyUSB0",
-        "app_portnum": 260
+        "app_portnum": 260,
+        "channel": 0
     },
     "udp": {
         "use": true,
-        "host": "192.0.0.1",
+        "host": "192.168.0.100",
         "port": 5555,
         "use_multicast": true,
         "multicast_group": "239.0.0.1",
         "multicast_port": 5550
     },
-    "nodemap": null
+    "mqtt": {
+        "use": false,
+        "base": "/hivelink/v1",
+        "broker": "192.168.0.100",
+        "port": 1833,
+        "client_id": "",
+        "username": "",
+        "password": ""
+    },
+    "nodemap": {}
 }

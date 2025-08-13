@@ -16,6 +16,16 @@ type_mapping = {
     "bytes": bytes,
 }
 
+class BinaryFlag(IntFlag):
+    EXAMPLE_1        = 1 << 0  
+    EXAMPLE_2        = 1 << 1  
+    EXAMPLE_3        = 1 << 2  
+    EXAMPLE_4        = 1 << 3  
+    EXAMPLE_5        = 1 << 4
+    EXAMPLE_6        = 1 << 5
+    EXAMPLE_7        = 1 << 6
+    EXAMPLE_8        = 1 << 7
+
 bin_type_map = {
     "enum": "B",
     "uint8_t": "B",
@@ -196,7 +206,7 @@ def decode_message(data):
                     raise ValueError(f"Protocol Error: Enum class {datatype} not found in PayloadEnum")
         elif datatype=="string":
             value = value.decode('utf-8')
-
+        
         payload_dict[key] = value
 
     return enum_member, payload_dict

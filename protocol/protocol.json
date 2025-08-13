@@ -25,49 +25,67 @@
                 ]
             }
         },
-        "Status": {
-            "Mission": {
-                "MISSION_PHASE": [
-                    {
-                        "name": "MissionPhase",
-                        "datatype": "enum",
-                        "bitmask": false
-                    }
-                ]
-            },
+        "Network": {
             "System": {
-                "INAV": [
+                "ONLINE": [],
+                "FIND": [
                     {
-                        "name": "inavmodes",
-                        "datatype": "int",
-                        "bitmask": false
-                    },
-                    {
-                        "name": "airspeed",
-                        "datatype": "int",
-                        "bitmask": false
-                    },
-                    {
-                        "name": "groundspeed",
-                        "datatype": "int",
-                        "bitmask": false
-                    },
-                    {
-                        "name": "heading",
-                        "datatype": "int",
-                        "bitmask": false
-                    },
-                    {
-                        "name": "msl_alt",
-                        "datatype": "int",
-                        "bitmask": false
-                    },
-                    {
-                        "name": "packed_mgrs",
+                        "name": "id",
                         "datatype": "bytes",
                         "bitmask": false
                     }
                 ],
+                "PING": []
+            }
+        },
+        "Reply": {
+            "Network": {
+                "ACK": [],
+                "FIND": [
+                    {
+                        "name": "found",
+                        "datatype": "bool",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "intf",
+                        "datatype": "bytes",
+                        "bitmask": true
+                    },
+                    {
+                        "name": "loss",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "latency",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "rssi",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "snr",
+                        "datatype": "int",
+                        "bitmask": false
+                    }
+                ]
+            },
+            "Command": {
+                "RESULT": [
+                    {
+                        "name": "CommandResult",
+                        "datatype": "enum",
+                        "bitmask": false
+                    }
+                ]
+            }
+        },
+        "Status": {
+            "System": {
                 "FLIGHT": [
                     {
                         "name": "FlightMode",
@@ -106,14 +124,7 @@
                         "datatype": "bytes",
                         "bitmask": false
                     }
-                ],
-                "NAVIGATION": [],
-                "FUEL": [],
-                "CONTROL": [],
-                "SYSTEMS": [],
-                "NAV": [],
-                "RADIO": [],
-                "PAYLOAD": []
+                ]
             },
             "AP": {
                 "HL_TELEM": [
@@ -144,21 +155,56 @@
                     },
                     {
                         "name": "packed_mgrs",
-                        "datatype": "string",
+                        "datatype": "bytes",
+                        "bitmask": false
+                    }
+                ]
+            },
+            "INAV": {
+                "TELEM": [
+                    {
+                        "name": "inavmodes",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "airspeed",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "groundspeed",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "heading",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "msl_alt",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "packed_mgrs",
+                        "datatype": "bytes",
                         "bitmask": false
                     }
                 ]
             }
         },
         "Command": {
+            "System": {
+                "ACTIVATE": [],
+                "SHUTDOWN": [],
+                "SET_FLIGHT_MODE": [],
+                "SWITCH_DATALINK": [],
+                "DATALINK_CONFIG": []
+            },
             "AP": {
-                "ARM": [
-                    {
-                        "name": "arm",
-                        "datatype": "int",
-                        "bitmask": false
-                    }
-                ],
+                "ARM": [],
                 "DISARM": [],
                 "SET_MODE": [
                     {
@@ -182,96 +228,6 @@
                         "bitmask": false
                     }
                 ]
-            },
-            "System": {
-                "ACTIVATE": [],
-                "SHUTDOWN": [],
-                "SET_FLIGHT_MODE": [],
-                "SWITCH_DATALINK": [],
-                "DATALINK_CONFIG": [],
-                "SET_FLIGHT_PARAMETERS": []
-            },
-            "Mission": {
-                "SET_MISSION": [
-                    {
-                        "name": "mission_index",
-                        "datatype": "int",
-                        "bitmask": false
-                    }
-                ],
-                "SET_MISSION_MODE": [],
-                "TAKEOFF": [],
-                "ABORT": [],
-                "HOLD": [],
-                "PROCEED": [],
-                "REROUTE": [],
-                "REASSIGN": [],
-                "SET_WAYPOINT": [],
-                "SET_ZONE": [],
-                "NAVIGATE_TO": [
-                    {
-                        "name": "packed_mgrs",
-                        "datatype": "bytes",
-                        "bitmask": false
-                    }
-                ],
-                "LOITER": [],
-                "LAND": [],
-                "ALLOW_DEPLOY": [],
-                "SWARM_CONTROL": []
-            }
-        },
-        "Event": {
-            "Mission": {
-                "PHASE": [
-                    {
-                        "name": "MissionPhase",
-                        "datatype": "enum",
-                        "bitmask": false
-                    }
-                ]
-            },
-            "System": {
-                "ONLINE": [],
-                "GPS_FIX": [],
-                "ERROR": [],
-                "RADIO": [],
-                "RF_EVENT": [],
-                "FAILSAFE": [],
-                "HW_FAILURE": [],
-                "ACK": [
-                    {
-                        "name": "msgid",
-                        "datatype": "int",
-                        "bitmask": false
-                    },
-                    {
-                        "name": "rxtime",
-                        "datatype": "int",
-                        "bitmask": false
-                    },
-                    {
-                        "name": "rssi",
-                        "datatype": "int",
-                        "bitmask": false
-                    }
-                ]
-            }
-        },
-        "Data": {
-            "Mission": {
-                "QUERY_MISSION_ID": [],
-                "QUERY_MISSION_PROGRESS": [],
-                "QUERY_CONTACTS": [],
-                "QUERY_SWARM_INFO": []
-            },
-            "System": {
-                "QUERY_SENSOR_DATA": [],
-                "QUERY_LOG_DATA": [],
-                "QUERY_DATALINK_STATUS": [],
-                "QUERY_NETWORK_STATUS": [],
-                "QUERY_SYSTEM_HEALTH": [],
-                "QUERY_TELEMETRY": []
             }
         }
     },

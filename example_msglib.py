@@ -4,11 +4,12 @@ from hivelink.protocol import *
 from froggeolib import *
 
 print("Status.System.FLIGHT:", Messages.Status.System.FLIGHT.value)      # Should be 1
-print("Status.System.POSITION:", Messages.Status.System.POSITION.value)  # Should be 2
-print("Status.System.NAVIGATION:", Messages.Status.System.NAVIGATION.value)  # Should be 3
+print("Network.System.ONLINE:", Messages.Network.System.ONLINE.value)  # Should be 2
 print("Command.System.ACTIVATE:", Messages.Command.System.ACTIVATE.value)      # Should be 1
 print("Command.System.SHUTDOWN:", Messages.Command.System.SHUTDOWN.value)  # Should be 2
-print("Command.System.SET_FLIGHT_MODE:", Messages.Command.System.SET_FLIGHT_MODE.value)  # Should be 3
+"""
+print("Status.System.NAVIGATION:", Messages.Status.System.NAVIGATION.value)  # Should be 3
+print("Command.System.SET_FLIGHT_MODE:", Messages.Command.System.SET_FLIGHT_MODE.value)  # Should be 3"""
 
 gps = GPSposition(lat=15.83345500, lon=20.89884100, alt=0)
 full_mgrs = latlon_to_mgrs(gps.lat, gps.lon, precision=5)

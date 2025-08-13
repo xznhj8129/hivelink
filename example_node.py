@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # example_node.py
-# simple example node with text chat + MQTT I/O relay handled inside datalinks (NOT a transport)
+# simple example node with text chat + MQTT I/O relay handled inside datalinks
 
 import asyncio
 import argparse
 import sys
 import time
+import json
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
@@ -72,10 +73,12 @@ async def receive_loop(datalinks: DatalinkInterface):
 
 async def main():
     parser = argparse.ArgumentParser(description="Terminal chat program")
-    parser.add_argument("--my_id", required=True, help="Node id as defined in nodes.json")
+
+    parser.add_argument("--config", default="", help="Use json config file")
+
+    parser.add_argument("--my_id", required=False, help="Node id as defined in nodes.json")
     parser.add_argument("--meshtastic_device", default="", help="Serial path to Meshtastic device")
 
-    # MQTT (optional I/O)
     parser.add_argument("--mqtt_broker", default="", help="MQTT broker host (enables MQTT I/O if set)")
     parser.add_argument("--mqtt_port", type=int, default=1883, help="MQTT broker port")
     parser.add_argument("--mqtt_client_id", default="", help="MQTT client id (defaults to my_id if empty)")
@@ -84,46 +87,92 @@ async def main():
 
     args = parser.parse_args()
 
-    nodemap = load_nodes_map()
-    if args.my_id not in nodemap:
-        print(f"Error: Node id '{args.my_id}' not found in nodes.json")
-        sys.exit(1)
+    if args.config:
+        with open(args.config, "r") as f:
+            cfg = json.load(f)
 
-    my_name = args.my_id
-    my_id = nodemap[my_name]["meshid"]
-    socket_host, socket_port = nodemap[my_name]["ip"]
+        my_name = cfg["my_name"]
+        my_id = cfg["my_id"]
+
+        # Meshtastic
+        use_meshtastic = bool(cfg["meshtastic"]["use"])
+        radio_serial = cfg["meshtastic"]["radio_serial"]
+        app_portnum = int(cfg["meshtastic"]["app_portnum"])
+
+        # UDP
+        use_udp = bool(cfg["udp"]["use"])
+        socket_host = cfg["udp"]["host"]
+        socket_port = int(cfg["udp"]["port"])
+        use_multicast = bool(cfg["udp"]["use_multicast"])
+        multicast_group = cfg["udp"]["multicast_group"]
+        multicast_port = int(cfg["udp"]["multicast_port"])
+
+        # MQTT
+        mqtt_enable = bool(cfg["mqtt"]["use"])
+        mqtt_base = cfg["mqtt"]["base"]
+        mqtt_broker = cfg["mqtt"]["broker"]
+        mqtt_port = int(cfg["mqtt"]["port"])
+        mqtt_client_id = cfg["mqtt"]["client_id"] if cfg["mqtt"]["client_id"] else my_name
+        mqtt_username = cfg["mqtt"]["username"]
+        mqtt_password = cfg["mqtt"]["password"]
+
+        nodemap = cfg["nodemap"]
+
+    else:
+        nodemap = load_nodes_map()
+        if not args.my_id or args.my_id not in nodemap:
+            print(f"Error: Node id '{args.my_id}' not found in nodes.json")
+            sys.exit(1)
+
+        my_name = args.my_id
+        my_id = nodemap[my_name]["meshid"]
+        socket_host, socket_port = nodemap[my_name]["ip"]
+
+        # Meshtastic
+        use_meshtastic = bool(args.meshtastic_device != "")
+        radio_serial = args.meshtastic_device
+        app_portnum = 260
+
+        # UDP
+        use_udp = True
+        use_multicast = True
+        multicast_group = "239.0.0.1"
+        multicast_port = 5550
+
+        # MQTT
+        mqtt_enable = bool(args.mqtt_broker)
+        mqtt_base = "/hivelink/v1"
+        mqtt_broker = args.mqtt_broker
+        mqtt_port = args.mqtt_port
+        mqtt_client_id = args.mqtt_client_id if args.mqtt_client_id else my_name
+        mqtt_username = args.mqtt_user
+        mqtt_password = args.mqtt_pass
 
     datalinks = DatalinkInterface(
-        use_meshtastic=(args.meshtastic_device != ""),
-        radio_port=args.meshtastic_device,
-        meshtastic_dataport=260,
-        use_udp=True,
-        use_multicast=True,
+        use_meshtastic=use_meshtastic,
+        radio_port=radio_serial,
+        meshtastic_dataport=app_portnum,
+        use_udp=use_udp,
+        use_multicast=use_multicast,
         socket_host=socket_host,
         socket_port=socket_port,
         my_name=my_name,
         my_id=my_id,
         nodemap=nodemap,
-        multicast_group="239.0.0.1",
-        multicast_port=5550,
-        mqtt_enable=bool(args.mqtt_broker),
-        mqtt_broker=args.mqtt_broker,
-        mqtt_port=args.mqtt_port,
-        mqtt_client_id=(args.mqtt_client_id if args.mqtt_client_id else my_name),
-        mqtt_username=args.mqtt_user,
-        mqtt_password=args.mqtt_pass,
-        mqtt_base="/hivelink/v1",
+        multicast_group=multicast_group,
+        multicast_port=multicast_port,
+        mqtt_enable=mqtt_enable,
+        mqtt_broker=mqtt_broker,
+        mqtt_port=mqtt_port,
+        mqtt_client_id=mqtt_client_id,
+        mqtt_username=mqtt_username,
+        mqtt_password=mqtt_password,
+        mqtt_base=mqtt_base,
         incumbent_window=600,
     )
 
-    datalinks.start()
 
-    # fire an ONLINE if your codec allows empty payload
-    try:
-        msg = Messages.Status.System.ONLINE
-        datalinks.send(encode_message(msg), dest="", meshtastic=True, multicast=True, udp=True)
-    except Exception:
-        pass
+    datalinks.start()
 
     send_task = recv_task = None
     try:
@@ -131,7 +180,6 @@ async def main():
             send_task = asyncio.create_task(send_loop(datalinks, my_name), name="send_loop")
             recv_task = asyncio.create_task(receive_loop(datalinks), name="recv_loop")
 
-            # Wait until first task finishes, then cancel the other
             done, pending = await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
             for t in pending:
                 t.cancel()
@@ -140,7 +188,6 @@ async def main():
                 except asyncio.CancelledError:
                     pass
     except KeyboardInterrupt:
-        # Ctrl+C anywhere => cancel both and exit clean
         for t in (send_task, recv_task):
             if t and not t.done():
                 t.cancel()
