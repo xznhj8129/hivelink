@@ -167,8 +167,6 @@ def create_payload(self, **kwargs):
             expected_type = type_mapping.get(field_info["type"])
             if expected_type is None:
                 raise ValueError(f"Protocol Error: Unknown datatype '{field_info['type']}' for field '{key}'")
-            if expected_type is str and isinstance(value, bytes):
-                pass
             elif not isinstance(value, expected_type):
                 raise TypeError(f"Protocol Error: Field '{key}' expects {expected_type.__name__}, got {type(value).__name__}")
 
@@ -204,7 +202,7 @@ def decode_message(data):
                     raise ValueError(f"Protocol Error: Invalid value {value} for enum {datatype}")
                 except AttributeError as e:
                     raise ValueError(f"Protocol Error: Enum class {datatype} not found in PayloadEnum")
-        elif datatype=="string":
+        elif datatype=="string" and isinstance(value, bytes):
             value = value.decode('utf-8')
         
         payload_dict[key] = value

@@ -4,6 +4,8 @@
 import asyncio
 import msgpack
 import socket
+
+# TODO: replace with mspapi2 client API
 from unavlib.control import UAVControl
 from unavlib.modules import geospatial
 from unavlib.modules.utils import inavutil

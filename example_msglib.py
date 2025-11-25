@@ -11,6 +11,7 @@ print("Command.System.SHUTDOWN:", Messages.Command.System.SHUTDOWN.value)  # Sho
 print("Status.System.NAVIGATION:", Messages.Status.System.NAVIGATION.value)  # Should be 3
 print("Command.System.SET_FLIGHT_MODE:", Messages.Command.System.SET_FLIGHT_MODE.value)  # Should be 3"""
 
+
 gps = GPSposition(lat=15.83345500, lon=20.89884100, alt=0)
 full_mgrs = latlon_to_mgrs(gps.lat, gps.lon, precision=5)
 pos = encode_mgrs_binary(full_mgrs, precision=5) # you don't have to do this, i'm just testing stuff
@@ -19,17 +20,18 @@ print(gps)
 print(full_mgrs)
 print(pos)
 
-msg_enum = Messages.Status.System.FLIGHT
-msg_id = messageid(msg_enum)
-payload = msg_enum.payload(
+msg = Messages.Status.System.FLIGHT
+msg_id = messageid(msg)
+payload = msg.payload(
     airspeed=100,
     FlightMode=PayloadEnum.FlightMode.LOITER,
     groundspeed=100,
     heading=0,
     msl_alt=100,
-    packed_mgrs=pos
+    lat=int(gps.lat * 1e7),
+    lon=int(gps.lon * 1e7)
 )
-encoded_msg = encode_message(msg_enum, payload)
+encoded_msg = encode_message(msg, payload)
 # for meshtastic, send encoded_msg directly
 eudp = encode_udp_packet(source="me", destination="you", payload=encoded_msg)
 
@@ -45,7 +47,7 @@ print('UDP packet:', eudp)
 
 dudp = decode_udp_packet(eudp)
 enum_member, decoded_payload = decode_message(dudp[2]) # for meshtastic, decode data directly
-decoded_payload["packed_mgrs"] = decode_mgrs_binary(decoded_payload["packed_mgrs"])
+#decoded_payload["packed_mgrs"] = decode_mgrs_binary(decoded_payload["packed_mgrs"])
 
 print()
 print("#" * 16)
@@ -56,15 +58,20 @@ print("Message string:", message_str_from_id(messageid(enum_member)))
 
 
 
-msg_enum = Messages.Testing.System.TEXTMSG
-msg_id = messageid(msg_enum)
-print(msg_enum)
+msg = Messages.Testing.System.TEXTMSG
+msg_id = messageid(msg)
+print(msg)
 print(msg_id)
 print(message_str_from_id(msg_id))
-payload = msg_enum.payload(
-    textdata=b"testing"
+try:
+    payload = msg.payload(textdata=b"testing")
+except Exception as e:
+    pass # Should fail, wrong type
+
+payload = msg.payload(
+    textdata = "testing"
 )
-encoded_msg = encode_message(msg_enum, payload)
+encoded_msg = encode_message(msg, payload)
 # for meshtastic, send encoded_msg directly
 eudp = encode_udp_packet(source="me", destination="you", payload=encoded_msg)
 

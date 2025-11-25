@@ -113,15 +113,25 @@
                         "bitmask": false
                     },
                     {
-                        "name": "packed_mgrs",
-                        "datatype": "bytes",
+                        "name": "lat",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "lon",
+                        "datatype": "int",
                         "bitmask": false
                     }
                 ],
                 "POSITION": [
                     {
-                        "name": "packed_mgrs",
-                        "datatype": "bytes",
+                        "name": "lat",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "lon",
+                        "datatype": "int",
                         "bitmask": false
                     }
                 ]
@@ -154,8 +164,13 @@
                         "bitmask": false
                     },
                     {
-                        "name": "packed_mgrs",
-                        "datatype": "bytes",
+                        "name": "lat",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "lon",
+                        "datatype": "int",
                         "bitmask": false
                     }
                 ]
@@ -188,8 +203,13 @@
                         "bitmask": false
                     },
                     {
-                        "name": "packed_mgrs",
-                        "datatype": "bytes",
+                        "name": "lat",
+                        "datatype": "int",
+                        "bitmask": false
+                    },
+                    {
+                        "name": "lon",
+                        "datatype": "int",
                         "bitmask": false
                     }
                 ]
