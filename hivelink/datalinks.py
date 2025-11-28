@@ -137,7 +137,7 @@ class DatalinkInterface:
         self.mqtt_enable = bool(mqtt_enable and mqtt is not None and mqtt_broker)
         self.mqtt_broker = mqtt_broker
         self.mqtt_port = int(mqtt_port)
-        self.mqtt_client_id = mqtt_client_id or self.my_name or "hivelink-node"
+        self.mqtt_client_id = mqtt_client_id
         self.mqtt_username = mqtt_username
         self.mqtt_password = mqtt_password
         self.mqtt_base = mqtt_base.rstrip("/")
@@ -147,7 +147,7 @@ class DatalinkInterface:
     # ---------- Presence / incumbent ----------
     def update_localnode_seen(self, src: str, intf: str, rssi=None, latency=None, ts: Optional[float] = None):
         self.localnodes[src] = {
-            "last_seen": int(ts if ts is not None else time.time()),
+            "last_seen": int(ts if ts is not None else 0),
             "intf": intf,
             "rssi": rssi,
             "latency": latency,
