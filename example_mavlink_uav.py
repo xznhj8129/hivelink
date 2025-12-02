@@ -15,8 +15,6 @@ import time
 from hivelink.protocol import *
 from hivelink.datalinks import *
 from hivelink.msglib import *
-import froggeolib
-import msgpack
 import traceback
 
 from pymavlink import mavutil
@@ -85,8 +83,9 @@ class MavlinkAP:
                     self.heading = int(m.heading or 0)
                     self.msl_alt = int(m.alt or 0)
                 elif mtype == "GLOBAL_POSITION_INT":
-                    self.lat = (m.lat or 0) / 1e7
-                    self.lon = (m.lon or 0) / 1e7
+                    if m.lat is not None and m.lon is not None:
+                        self.lat = m.lat / 1e7
+                        self.lon = m.lon / 1e7
                 # Extend as needed
             except Exception as e:
                 print(f"[MAV] pump error: {e}")
@@ -228,19 +227,19 @@ async def hivelink_telem_loop(datalinks: DatalinkInterface, ap: MavlinkAP, rate_
     period = 1.0 / max(rate_hz, 0.1)
     while True:
         try:
-            # Build HL_TELEM
             msg = Messages.Status.AP.HL_TELEM
-            lat = ap.lat if ap.lat else 0
-            lon = ap.lon if ap.lon else 0
-            full_mgrs = froggeolib.latlon_to_mgrs(lat, lon, precision=5)
-            pos = froggeolib.encode_mgrs_binary(full_mgrs, precision=5)
+            if ap.lat is None or ap.lon is None:
+                await asyncio.sleep(period)
+                continue
+
             payload = msg.payload(
-                mode_str=ap.mode_str.encode("utf-8", errors="ignore"),
+                mode_str=ap.mode_str,
                 airspeed=int(ap.airspeed),
                 groundspeed=int(ap.groundspeed),
                 heading=int(ap.heading),
                 msl_alt=int(ap.msl_alt),
-                packed_mgrs=pos,
+                lat=int(ap.lat * 1e7),
+                lon=int(ap.lon * 1e7),
             )
             encoded = encode_message(msg, payload)
             # Broadcast over all available links; adapt as you like

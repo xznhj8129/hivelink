@@ -13,15 +13,9 @@ print("Command.System.SET_FLIGHT_MODE:", Messages.Command.System.SET_FLIGHT_MODE
 
 
 gps = GPSposition(lat=15.83345500, lon=20.89884100, alt=0)
-full_mgrs = latlon_to_mgrs(gps.lat, gps.lon, precision=5)
-pos = encode_mgrs_binary(full_mgrs, precision=5) # you don't have to do this, i'm just testing stuff
-
 print(gps)
-print(full_mgrs)
-print(pos)
 
 msg = Messages.Status.System.FLIGHT
-msg_id = messageid(msg)
 payload = msg.payload(
     airspeed=100,
     FlightMode=PayloadEnum.FlightMode.LOITER,
@@ -31,9 +25,12 @@ payload = msg.payload(
     lat=int(gps.lat * 1e7),
     lon=int(gps.lon * 1e7)
 )
+print(payload)
 encoded_msg = encode_message(msg, payload)
 # for meshtastic, send encoded_msg directly
 eudp = encode_udp_packet(source="me", destination="you", payload=encoded_msg)
+
+msg_id = messageid(msg)
 
 print()
 print("#" * 16)

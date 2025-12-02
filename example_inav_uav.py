@@ -96,8 +96,6 @@ async def main() -> None:
     parser.add_argument("--port", help="Serial device path for MSP (e.g. /dev/ttyUSB0)")
     parser.add_argument("--baudrate", type=int, default=DEFAULT_BAUDRATE, help="Serial baud rate")
     parser.add_argument("--tcp", help="Connect to MSP over TCP, HOST:PORT")
-    parser.add_argument("--read-timeout", type=float, default=DEFAULT_READ_TIMEOUT, help="MSP read timeout (seconds)")
-    parser.add_argument("--write-timeout", type=float, default=DEFAULT_WRITE_TIMEOUT, help="MSP write timeout (seconds)")
     parser.add_argument("--meshtastic", default="", help="Optional Meshtastic serial device for radio link")
     parser.add_argument("--interval", type=float, default=DEFAULT_INTERVAL_S, help="Telemetry interval seconds")
     args = parser.parse_args()
