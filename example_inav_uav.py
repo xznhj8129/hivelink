@@ -152,9 +152,8 @@ async def main() -> None:
 
             while True:
                 telemetry = await asyncio.to_thread(collect_telem_snapshot, api, mode_map)
-                msg = Messages.Status.INAV.TELEM
-                payload = msg.payload(**telemetry)
-                encoded = encode_message(msg, payload)
+                msg_instance = Messages.Status.INAV.TELEM(**telemetry)
+                encoded = msg_instance.encode()
                 sent = datalinks.send(encoded, dest=args.dest, udp=True, meshtastic=bool(args.meshtastic))
                 print(
                     f"[TX] dest={args.dest} mask={telemetry['inavmodes']} "

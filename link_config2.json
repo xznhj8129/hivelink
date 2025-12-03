@@ -1,0 +1,41 @@
+{
+    "my_name": "example1",
+    "my_id": "example1",
+
+    "meshtastic": {
+        "use": false,
+        "radio_serial": "/dev/ttyUSB0",
+        "app_portnum": 260,
+        "channel": 0
+    },
+    "udp": {
+        "use": true,
+        "host": "192.168.0.213",
+        "port": 5555,
+        "use_multicast": true,
+        "multicast_group": "239.0.0.1",
+        "multicast_port": 5550
+    },
+    "mqtt": {
+        "use": false,
+        "base": "/hivelink/v1",
+        "broker": "192.168.0.100",
+        "port": 1833,
+        "client_id": "",
+        "username": "",
+        "password": ""
+    },
+    "nodemap": {
+        "example1": {
+            "meshid": 862205276, 
+            "ip": ["192.168.0.213", 5555], 
+            "routes": {}
+        },
+        "example2": {
+            "meshid": 621101300, 
+            "ip": ["192.168.0.77", 5555], 
+            "routes": {}
+        }
+    }
+
+}

@@ -174,6 +174,23 @@ def create_payload(self, **kwargs):
 
     return plist
 
+class MessageInstance:
+    __slots__ = ("enum_member", "payload_list", "payload_dict")
+
+    def __init__(self, enum_member, payload_list, payload_dict):
+        self.enum_member = enum_member
+        self.payload_list = payload_list
+        self.payload_dict = payload_dict
+
+    def encode(self) -> bytes:
+        return encode_message(self.enum_member, self.payload_list)
+
+    def as_object(self) -> Dict[str, Any]:
+        return {
+            "msgid": message_str_from_id(messageid(self.enum_member)),
+            "payload": self.payload_dict
+        }
+
 def encode_message(msg_enum, payload=[]):
     category, subcategory, msgtype = messageid(msg_enum)
     return msgpack.packb([category, subcategory, msgtype, payload])
@@ -218,4 +235,13 @@ for category_name in dir(Messages):
                 subcategory = getattr(category, subcategory_name)
                 if isinstance(subcategory, type) and issubclass(subcategory, Enum):
                     setattr(subcategory, 'payload', create_payload)
-
+                    
+                    def _instance_builder(self, **kwargs):
+                        plist = create_payload(self, **kwargs)
+                        ordered = {}
+                        for field in self.payload_def:
+                            fname = field["name"]
+                            key = fname[len("PayloadEnum_"):] if fname.startswith("PayloadEnum_") else fname
+                            ordered[key] = kwargs[key]
+                        return MessageInstance(self, plist, ordered)
+                    setattr(subcategory, '__call__', _instance_builder)

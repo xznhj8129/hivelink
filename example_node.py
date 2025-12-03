@@ -5,24 +5,21 @@
 import asyncio
 import argparse
 import sys
-import time
 import json
-
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from hivelink.protocol import *
-from hivelink.datalinks import *
+from hivelink.protocol import * #leave as *
+from hivelink.datalinks import * #leave as *
 from hivelink.msglib import *
-import froggeolib
-import frogcot
-import msgpack
+import frogtastic
 
 session = PromptSession("> ")
 
 
 async def send_loop(datalinks: DatalinkInterface, my_name: str):
     default_dest = "gcs1" if my_name != "gcs1" else "drone1"
+    destination = default_dest
     while True:
         try:
             text = await session.prompt_async()
@@ -37,20 +34,31 @@ async def send_loop(datalinks: DatalinkInterface, my_name: str):
         send_mc = False
         send_mesh = False
         send_udp = False
+        payload_text = ""
 
         if text.startswith("/mesh "):
-            text = text.strip("/mesh ")
+            payload_text = text[len("/mesh "):]
             send_mesh = True
         elif text.startswith("/mc "):
-            text = text.strip("/mc ")
+            payload_text = text[len("/mc "):]
             send_mc = True
+        elif text.startswith("/dest"):
+            parts = text.split(maxsplit=1)
+            if len(parts) < 2 or not parts[1].strip():
+                print("Destination not provided")
+                continue
+            destination = parts[1].strip()
+            print("Set destination:", destination)
+            continue
         else:
+            payload_text = text
             send_udp = True
 
-        msg = Messages.Testing.System.TEXTMSG
-        payload = msg.payload(textdata=text)
-        encoded = encode_message(msg, payload)
-        datalinks.send(encoded, dest=default_dest, meshtastic=send_mesh, multicast=send_mc, udp=send_udp)
+        if send_mc or send_mesh or send_udp: 
+            msg_instance = Messages.Testing.System.TEXTMSG(textdata=payload_text)
+            encoded = msg_instance.encode()
+            datalinks.send(encoded, dest=destination, meshtastic=send_mesh, multicast=send_mc, udp=send_udp)
+        
 
 
 async def receive_loop(datalinks: DatalinkInterface):
@@ -86,7 +94,8 @@ async def main():
     parser.add_argument("--mqtt_pass", default=None, help="MQTT password")
 
     args = parser.parse_args()
-
+    nodemap = load_nodes_map()
+    
     if args.config:
         with open(args.config, "r") as f:
             cfg = json.load(f)
@@ -116,10 +125,7 @@ async def main():
         mqtt_username = cfg["mqtt"]["username"]
         mqtt_password = cfg["mqtt"]["password"]
 
-        nodemap = cfg["nodemap"]
-
     else:
-        nodemap = load_nodes_map()
         if not args.my_id or args.my_id not in nodemap:
             print(f"Error: Node id '{args.my_id}' not found in nodes.json")
             sys.exit(1)

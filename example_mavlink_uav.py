@@ -232,7 +232,7 @@ async def hivelink_telem_loop(datalinks: DatalinkInterface, ap: MavlinkAP, rate_
                 await asyncio.sleep(period)
                 continue
 
-            payload = msg.payload(
+            msg_instance = msg(
                 mode_str=ap.mode_str,
                 airspeed=int(ap.airspeed),
                 groundspeed=int(ap.groundspeed),
@@ -241,7 +241,7 @@ async def hivelink_telem_loop(datalinks: DatalinkInterface, ap: MavlinkAP, rate_
                 lat=int(ap.lat * 1e7),
                 lon=int(ap.lon * 1e7),
             )
-            encoded = encode_message(msg, payload)
+            encoded = msg_instance.encode()
             # Broadcast over all available links; adapt as you like
             datalinks.send(encoded, dest="", meshtastic=True)
         except Exception as e:

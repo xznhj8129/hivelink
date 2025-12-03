@@ -76,8 +76,7 @@ async def main() -> None:
     parser.add_argument("--poll", type=float, default=0.2, help="Poll interval seconds for receive loop")
     args = parser.parse_args()
 
-    with open(args.mode_ranges, "r") as f:
-        mode_ranges_data = json.load(f)
+    mode_ranges_data = json.load(open(args.mode_ranges, "r"))
     if not isinstance(mode_ranges_data, list):
         raise ValueError("Mode ranges file must contain a list of mode range objects")
     for entry in mode_ranges_data:
@@ -87,8 +86,7 @@ async def main() -> None:
 
     meshtastic_dev = args.meshtastic or None
     if args.config:
-        with open(args.config, "r") as f:
-            cfg = json.load(f)
+        cfg = json.load(open(args.config, "r"))
         my_name = cfg["my_id"]
         nodemap_cfg = cfg.get("nodemap") or {}
         nodemap = nodemap_cfg if nodemap_cfg else load_nodes_map()

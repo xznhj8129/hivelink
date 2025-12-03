@@ -421,8 +421,8 @@ class DatalinkInterface:
         data: bytes,
         dest: Optional[str] = None,
         udp: bool = False,
-        meshtastic: bool = False,
-        multicast: bool = False,
+        meshtastic:  Optional[bool] = False,
+        multicast:  Optional[bool] = False,
     ) -> bool:
         # UDP and Multicast
         sent = False

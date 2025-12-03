@@ -1,93 +1,54 @@
-from hivelink.msglib import *
-from hivelink.datalinks import encode_udp_packet, decode_udp_packet
-from hivelink.protocol import *
-from froggeolib import *
-
-print("Status.System.FLIGHT:", Messages.Status.System.FLIGHT.value)      # Should be 1
-print("Network.System.ONLINE:", Messages.Network.System.ONLINE.value)  # Should be 2
-print("Command.System.ACTIVATE:", Messages.Command.System.ACTIVATE.value)      # Should be 1
-print("Command.System.SHUTDOWN:", Messages.Command.System.SHUTDOWN.value)  # Should be 2
-"""
-print("Status.System.NAVIGATION:", Messages.Status.System.NAVIGATION.value)  # Should be 3
-print("Command.System.SET_FLIGHT_MODE:", Messages.Command.System.SET_FLIGHT_MODE.value)  # Should be 3"""
+from hivelink.msglib import (
+    encode_message,
+    decode_message,
+    messageid,
+    message_str_from_id,
+    PayloadEnum,
+    Messages,
+)
 
 
-gps = GPSposition(lat=15.83345500, lon=20.89884100, alt=0)
-print(gps)
-
-msg = Messages.Status.System.FLIGHT
-payload = msg.payload(
+print("=== FLIGHT message ===")
+lat = 15.833455
+lon = 20.898841
+msg_instance = Messages.Status.System.FLIGHT(
     airspeed=100,
     FlightMode=PayloadEnum.FlightMode.LOITER,
     groundspeed=100,
     heading=0,
     msl_alt=100,
-    lat=int(gps.lat * 1e7),
-    lon=int(gps.lon * 1e7)
+    lat=int(lat * 1e7),
+    lon=int(lon * 1e7),
 )
-print(payload)
-encoded_msg = encode_message(msg, payload)
-# for meshtastic, send encoded_msg directly
-eudp = encode_udp_packet(source="me", destination="you", payload=encoded_msg)
+obj = msg_instance.as_object()
+print("Object:", obj)
 
-msg_id = messageid(msg)
+encoded_msg = msg_instance.encode()
+print("Message str:", obj["msgid"])
+print("Payload:", obj["payload"])
+print("Encoded length:", len(encoded_msg))
 
-print()
-print("#" * 16)
-print(message_str_from_id(msg_id))
-print('msgid:', msg_id)
-print("Payload list:", payload)
-print("FLIGHT encoded:", encoded_msg)
-print("Length:", len(encoded_msg))
-print('UDP packet:', eudp)
-
-
-dudp = decode_udp_packet(eudp)
-enum_member, decoded_payload = decode_message(dudp[2]) # for meshtastic, decode data directly
-#decoded_payload["packed_mgrs"] = decode_mgrs_binary(decoded_payload["packed_mgrs"])
-
-print()
-print("#" * 16)
-print('Decoded UDP packet:', dudp)
+enum_member, decoded_payload = decode_message(encoded_msg)
 print("Decoded enum:", enum_member)
 print("Decoded payload:", decoded_payload)
-print("Message string:", message_str_from_id(messageid(enum_member)))
+print("Decoded msg str:", message_str_from_id(messageid(enum_member)))
+print()
 
-
-
-msg = Messages.Testing.System.TEXTMSG
-msg_id = messageid(msg)
-print(msg)
-print(msg_id)
-print(message_str_from_id(msg_id))
+print("=== TEXT message ===")
+msg_enum = Messages.Testing.System.TEXTMSG
 try:
-    payload = msg.payload(textdata=b"testing")
+    msg_enum(textdata=b"testing")
 except Exception as e:
-    pass # Should fail, wrong type
+    print("Expected failure on wrong type:", e)
 
-payload = msg.payload(
-    textdata = "testing"
-)
-encoded_msg = encode_message(msg, payload)
-# for meshtastic, send encoded_msg directly
-eudp = encode_udp_packet(source="me", destination="you", payload=encoded_msg)
+msg_instance = msg_enum(textdata="testing")
+encoded_msg = msg_instance.encode()
+print("Message str:", message_str_from_id(messageid(msg_enum)))
+print("Payload:", msg_instance.as_object()["payload"])
+print("Encoded length:", len(encoded_msg))
 
-print()
-print("#" * 16)
-print(message_str_from_id(msg_id))
-print('msgid:', msg_id)
-print("Payload list:", payload)
-print("Encoded:", encoded_msg)
-print("Length:", len(encoded_msg))
-print('UDP packet:', eudp)
-
-
-dudp = decode_udp_packet(eudp)
-enum_member, decoded_payload = decode_message(dudp[2])
-
-print()
-print("#" * 16)
-print('Decoded UDP packet:', dudp)
+enum_member, decoded_payload = decode_message(encoded_msg)
 print("Decoded enum:", enum_member)
 print("Decoded payload:", decoded_payload)
-print("Message string:", message_str_from_id(messageid(enum_member)))
+print("Decoded msg str:", message_str_from_id(messageid(enum_member)))
+
