@@ -6,3 +6,4 @@ froggeolib
 pymavlink
 asyncio
 paho-mqtt
+frogproto

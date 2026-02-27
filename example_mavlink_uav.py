@@ -12,9 +12,12 @@ import argparse
 import sys
 import time
 
-from hivelink.protocol import *
-from hivelink.datalinks import *
-from hivelink.msglib import *
+import hivelink.protocol as hl_proto
+from hivelink.datalinks import DatalinkInterface, load_nodes_map
+
+Proto = hl_proto.Proto
+Messages = hl_proto.Messages
+PayloadEnum = hl_proto.PayloadEnum
 import traceback
 
 from pymavlink import mavutil
@@ -181,7 +184,7 @@ async def hivelink_command_loop(datalinks: DatalinkInterface, ap: MavlinkAP):
         try:
             for msg in datalinks.receive():
                 try:
-                    msgtype, payload = decode_message(msg["data"])
+                    msgtype, payload = Proto.decode_message(msg["data"])
                 except Exception as e:
                     print(f"[HL] decode error: {e}")
                     continue

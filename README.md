@@ -22,71 +22,34 @@ Significantly simplified and integrated with my other libraries\
 - ☐ APRS
 
 ## Requirements:
-- [FrogCoT](https://github.com/xznhj8129/frogcot)
 - [FrogGeoLib](https://github.com/xznhj8129/froggeolib)
 - [FrogTastic](https://github.com/xznhj8129/frogtastic)
+- [FrogProto](https://github.com/xznhj8129/frogproto)
 
 ### Usage:
-- Define messages in the csv files
-- run gen_definitions.py, generates .json and enums file
-- payload.py defines enums of messages and packed binary enum values
-- msglib.py defines usage and structure
+- Define messages in `protocol.json` (root of this repo).
+- On import, `hivelink.protocol` loads that JSON via frogproto’s runtime; call `frogproto.load("<path>")` yourself to point at a different schema if needed.
+- `frogproto/msglib.py` defines encoding/decoding helpers; Hivelink re-exports the loaded enums in `hivelink.protocol`.
 
 ## Message definitions
 Central piece of the library is *parametric and flexible* definition and generation of protocol messages that are hierarchized and categorized; loaded at runtime without hard-coding and used simply with enums.\
-Messages and payloads are defined in the CSV files in protocol/. Run gen_definitions.py to generate hivelink/protocol.py (ugly, WIP) from which the whole module will run on. Each enum represents a message and exposes a `.payload()` helper which validates and orders the fields.
+Messages and payload enums live in `protocol.json`. Each enum represents a message and exposes a `.payload()` helper which validates and orders the fields.
 **Messages not fixed, only for testing right now**
-### Example message_definiton.csv:
-| Category | Type | Subtype | FieldName | FieldType | FieldBitmask |
-|----|--------|---------|-------|-----|-----|
-|UAV|GenericTelemetry|FLIGHT|
-||||FlightMode|enum|FALSE
-||||StatusMask|int|TRUE
-||||airspeed|int|FALSE
-||||groundspeed|int|FALSE
-||||heading|int|FALSE
-||||msl_alt|int|FALSE
-||||lat|int|FALSE
-||||lat|int|FALSE
-
-### Example payload_enums.csv
-| Payload | Field | Value |
-|---|---|---|
-|FlightMode||3|
-||_info| Generic Flight modes |
-||ACRO|1|
-||ANGLE|2|
-||POSHOLD|3|
-||NAV_WP|4|
-||LOITER|5|
-||CRUSE|6|
-||RTH|7|
-||LANDING|8|
-||DISARMED|9|
 
 ### Example Usage:
 ```python
-from hivelink.protocol import Messages
+import hivelink
+from hivelink.protocol import Proto, Messages, PayloadEnum
 
-payload = Messages.Testing.System.TEXTMSG.payload(textdata=b"hello")
-msgflags = BinaryFlag.ACK_REQUEST
-msg = Messages.UAV.GenericTelemetry.FLIGHT
-payload = msg.payload(
-    FlightMode=PayloadEnum.FlightMode.LOITER,
-    airspeed=int(ap.airspeed),
-    groundspeed=int(ap.groundspeed),
-    heading=int(ap.heading),
-    msl_alt=int(ap.msl_alt),
-    lat=int(ap.lat * 1e7),
-    lon=int(ap.lat * 1e7),
-)
-encoded = encode_message(msg, payload)
+msg = Messages.Testing.System.TEXTMSG(textdata="hello")
+encoded = msg.encode()
+enum_member, decoded = Proto.decode_message(encoded)
+print(Proto.message_str_from_id(Proto.messageid(enum_member)), decoded)
 ```
 
 ## Protocol helpers
-`msglib.py` contains helpers to create and parse messages:
+`frogproto/msglib.py` contains helpers to create and parse messages:
 - `encode_message` and `decode_message` work with the message enums and payload lists.
-- `encode_udp_packet` and `decode_udp_packet` wrap messages for raw UDP links.
 - `messageid` / `message_str_from_id` convert between enums and integer IDs.
 
 ##### UDP Packet Structure

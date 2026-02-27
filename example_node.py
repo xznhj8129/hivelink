@@ -9,11 +9,12 @@ import json
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from hivelink.protocol import * #leave as *
-from hivelink.datalinks import * #leave as *
-from hivelink.msglib import *
+import hivelink.protocol as hl_proto
+from hivelink.datalinks import DatalinkInterface, load_nodes_map
 import frogtastic
 
+Proto = hl_proto.Proto
+Messages = hl_proto.Messages
 session = PromptSession("> ")
 
 
@@ -66,11 +67,11 @@ async def receive_loop(datalinks: DatalinkInterface):
         while True:
             for msg in datalinks.receive():
                 try:
-                    enum_member, decoded = decode_message(msg["data"])
+                    enum_member, decoded = Proto.decode_message(msg["data"])
                     if enum_member == Messages.Testing.System.TEXTMSG:
                         print(f"{msg['from']}({msg['intf']}): {decoded.get('textdata','')}")
                     else:
-                        print(f"[RECEIVED] {message_str_from_id(messageid(enum_member))} from {msg['from']} via {msg['intf']}")
+                        print(f"[RECEIVED] {Proto.message_str_from_id(Proto.messageid(enum_member))} from {msg['from']} via {msg['intf']}")
                         print(decoded)
                 except Exception as e:
                     print(f"[RECEIVED] Error decoding message: {e}")

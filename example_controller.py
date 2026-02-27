@@ -11,9 +11,11 @@ import asyncio
 import json
 from typing import Any, Dict, List, Sequence
 
+import hivelink.protocol as hl_proto
 from hivelink.datalinks import DatalinkInterface, load_nodes_map
-from hivelink.msglib import decode_message, message_str_from_id, messageid
-from hivelink.protocol import Messages
+
+Proto = hl_proto.Proto
+Messages = hl_proto.Messages
 
 MULTICAST_GROUP = "239.0.0.1"
 MULTICAST_PORT = 5550
@@ -143,8 +145,8 @@ async def main() -> None:
     try:
         while True:
             for msg in datalinks.receive():
-                enum_member, payload = decode_message(msg["data"])
-                msg_name = message_str_from_id(messageid(enum_member))
+                enum_member, payload = Proto.decode_message(msg["data"])
+                msg_name = Proto.message_str_from_id(Proto.messageid(enum_member))
                 print(f"[RX] from={msg['from']} via={msg['intf']} id={msg_name}")
 
                 if enum_member == Messages.Status.INAV.TELEM:

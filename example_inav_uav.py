@@ -7,9 +7,11 @@ from typing import Any, Dict, List, Sequence
 from mspapi2.lib import InavEnums
 from mspapi2.msp_api import MSPApi
 
+import hivelink.protocol as hl_proto
 from hivelink.datalinks import DatalinkInterface, load_nodes_map
-from hivelink.msglib import decode_message, encode_message, message_str_from_id, messageid
-from hivelink.protocol import Messages
+
+Proto = hl_proto.Proto
+Messages = hl_proto.Messages
 
 DEFAULT_BAUDRATE = 115200
 DEFAULT_READ_TIMEOUT = 0.05
@@ -162,8 +164,8 @@ async def main() -> None:
                 )
 
                 for incoming in datalinks.receive():
-                    enum_member, payload_decoded = decode_message(incoming["data"])
-                    msg_name = message_str_from_id(messageid(enum_member))
+                    enum_member, payload_decoded = Proto.decode_message(incoming["data"])
+                    msg_name = Proto.message_str_from_id(Proto.messageid(enum_member))
                     print(f"[RX] from={incoming['from']} id={msg_name} payload={payload_decoded}")
 
                 await asyncio.sleep(args.interval)

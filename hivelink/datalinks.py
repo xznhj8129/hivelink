@@ -12,14 +12,20 @@ from frogtastic import MeshtasticClient
 import traceback
 import logging, base64, faulthandler, enum, math
 import paho.mqtt.client as mqtt
-from hivelink.protocol import *
-from hivelink.msglib import *
+import hivelink.protocol as hl_proto
 
 PROTOCOL_VERSION = 1
 MAX_MESH_PACKET_SIZE = 220  # Total packet size (bytes)
 SYNC_BYTE = 0xFA
 crc16 = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 B64_TAG = "__b64__"
+
+Proto = hl_proto.Proto
+Messages = hl_proto.Messages
+messageid = Proto.messageid
+message_str_from_id = Proto.message_str_from_id
+encode_message = Proto.encode_message
+decode_message = Proto.decode_message
 
 def _to_jsonable(obj):
     if obj is None or isinstance(obj, (str, int, bool)):
