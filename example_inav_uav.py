@@ -9,9 +9,14 @@ from mspapi2.msp_api import MSPApi
 
 import hivelink.protocol as hl_proto
 from hivelink.datalinks import DatalinkInterface, load_nodes_map
-
-Proto = hl_proto.Proto
-Messages = hl_proto.Messages
+from occid.schema import (
+    AltitudeDatum,
+    EulerAngles,
+    FlightControlState,
+    GlobalPosition,
+    LocationState,
+    VelocityVector,
+)
 
 DEFAULT_BAUDRATE = 115200
 DEFAULT_READ_TIMEOUT = 0.05
@@ -74,6 +79,11 @@ def collect_telem_snapshot(api: MSPApi, mode_map: ModeMap) -> Dict[str, int]:
     _, active_modes = api.get_active_modes()
 
     mask = mode_map.mask_from_active(active_modes)
+    active_mode_ids = [int(entry["permanentId"]) for entry in active_modes]
+    active_mode_names = [
+        entry.get("mode") or entry.get("boxName") or mode_map.names[int(entry["permanentId"])]
+        for entry in active_modes
+    ]
     groundspeed = int(round(raw_gps["speed"]))
     heading = int(round(attitude["yaw"]))
     msl_alt = int(round(altitude["estimatedAltitude"]))
@@ -88,6 +98,8 @@ def collect_telem_snapshot(api: MSPApi, mode_map: ModeMap) -> Dict[str, int]:
         "msl_alt": msl_alt,
         "lat": lat,
         "lon": lon,
+        "active_mode_ids": active_mode_ids,
+        "active_mode_names": active_mode_names,
     }
 
 
@@ -137,8 +149,8 @@ async def main() -> None:
         with MSPApi(
             port=port,
             baudrate=args.baudrate,
-            read_timeout=args.read_timeout,
-            write_timeout=args.write_timeout,
+            read_timeout=DEFAULT_READ_TIMEOUT,
+            write_timeout=DEFAULT_WRITE_TIMEOUT,
             tcp_endpoint=args.tcp,
         ) as api:
             _, fc_variant = api.get_fc_variant()
@@ -154,19 +166,48 @@ async def main() -> None:
 
             while True:
                 telemetry = await asyncio.to_thread(collect_telem_snapshot, api, mode_map)
-                msg_instance = Messages.Status.INAV.TELEM(**telemetry)
-                encoded = msg_instance.encode()
-                sent = datalinks.send(encoded, dest=args.dest, udp=True, meshtastic=bool(args.meshtastic))
+                location = LocationState(
+                    position=GlobalPosition(
+                        lat=telemetry["lat"] / 1e7,
+                        lon=telemetry["lon"] / 1e7,
+                        alt=telemetry["msl_alt"],
+                        alt_frame=AltitudeDatum.SEA_LEVEL,
+                    ),
+                    attitude=EulerAngles(heading=telemetry["heading"]),
+                    velocity=VelocityVector(x=telemetry["groundspeed"]),
+                )
+                control = FlightControlState(
+                    armed=0 in telemetry["active_mode_ids"],
+                    active_modes=telemetry["active_mode_ids"],
+                    active_mode_names=telemetry["active_mode_names"],
+                )
+                location_envelope = hl_proto.build_envelope(location, src=args.my_id, dst=args.dest)
+                control_envelope = hl_proto.build_envelope(control, src=args.my_id, dst=args.dest)
+                sent_location = datalinks.send(
+                    hl_proto.encode_message(location_envelope, location),
+                    dest=args.dest,
+                    udp=True,
+                    meshtastic=bool(args.meshtastic),
+                )
+                sent_control = datalinks.send(
+                    hl_proto.encode_message(control_envelope, control),
+                    dest=args.dest,
+                    udp=True,
+                    meshtastic=bool(args.meshtastic),
+                )
                 print(
                     f"[TX] dest={args.dest} mask={telemetry['inavmodes']} "
                     f"gs={telemetry['groundspeed']} heading={telemetry['heading']} "
-                    f"lat={telemetry['lat']} lon={telemetry['lon']} alt={telemetry['msl_alt']} sent={sent}"
+                    f"lat={telemetry['lat']} lon={telemetry['lon']} alt={telemetry['msl_alt']} "
+                    f"sent_location={sent_location} sent_control={sent_control}"
                 )
 
                 for incoming in datalinks.receive():
-                    enum_member, payload_decoded = Proto.decode_message(incoming["data"])
-                    msg_name = Proto.message_str_from_id(Proto.messageid(enum_member))
-                    print(f"[RX] from={incoming['from']} id={msg_name} payload={payload_decoded}")
+                    envelope, payload_decoded = hl_proto.decode_message(incoming["data"])
+                    print(
+                        f"[RX] from={incoming['from']} id={envelope.msg_type} "
+                        f"payload={payload_decoded.model_dump(mode='json', exclude_none=True)}"
+                    )
 
                 await asyncio.sleep(args.interval)
     except KeyboardInterrupt:

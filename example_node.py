@@ -11,10 +11,9 @@ from prompt_toolkit.patch_stdout import patch_stdout
 
 import hivelink.protocol as hl_proto
 from hivelink.datalinks import DatalinkInterface, load_nodes_map
+from occid.schema import HumanTextMessage
 import frogtastic
 
-Proto = hl_proto.Proto
-Messages = hl_proto.Messages
 session = PromptSession("> ")
 
 
@@ -56,8 +55,13 @@ async def send_loop(datalinks: DatalinkInterface, my_name: str):
             send_udp = True
 
         if send_mc or send_mesh or send_udp: 
-            msg_instance = Messages.Testing.System.TEXTMSG(textdata=payload_text)
-            encoded = msg_instance.encode()
+            payload = HumanTextMessage(
+                sender_id=my_name,
+                destination_id=destination,
+                message=payload_text,
+            )
+            envelope = hl_proto.build_envelope(payload, src=my_name, dst=destination)
+            encoded = hl_proto.encode_message(envelope, payload)
             datalinks.send(encoded, dest=destination, meshtastic=send_mesh, multicast=send_mc, udp=send_udp)
         
 
@@ -67,12 +71,12 @@ async def receive_loop(datalinks: DatalinkInterface):
         while True:
             for msg in datalinks.receive():
                 try:
-                    enum_member, decoded = Proto.decode_message(msg["data"])
-                    if enum_member == Messages.Testing.System.TEXTMSG:
-                        print(f"{msg['from']}({msg['intf']}): {decoded.get('textdata','')}")
+                    envelope, payload = hl_proto.decode_message(msg["data"])
+                    if type(payload) == HumanTextMessage:
+                        print(f"{msg['from']}({msg['intf']}): {payload.message}")
                     else:
-                        print(f"[RECEIVED] {Proto.message_str_from_id(Proto.messageid(enum_member))} from {msg['from']} via {msg['intf']}")
-                        print(decoded)
+                        print(f"[RECEIVED] {envelope.msg_type} from {msg['from']} via {msg['intf']}")
+                        print(payload.model_dump(mode="json", exclude_none=True))
                 except Exception as e:
                     print(f"[RECEIVED] Error decoding message: {e}")
             await asyncio.sleep(0.1)

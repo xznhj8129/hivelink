@@ -21,7 +21,7 @@ setup(
     download_url="",
     include_package_data=True,
     keywords=['udp','meshtastic','manet','mavlink'],
-    install_requires=['geographiclib','mgrs','geojson','crcmod','msgpack','asyncio','frogproto'],
+    install_requires=['geographiclib','mgrs','geojson','crcmod','msgpack','asyncio','pydantic>=2'],
     classifiers=[
           'Development Status :: 4 - Beta',
           'Intended Audience :: Developers',

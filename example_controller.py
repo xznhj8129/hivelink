@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Ground-side receiver/monitor for Hivelink INAV telemetry.
+Ground-side receiver/monitor for Hivelink OCCID INAV telemetry.
 - Uses the same PRELOAD_MODES / ModeMap logic as example_inav_uav so bitmasks decode correctly.
 - Pulls link config from a JSON file (same shape as link_config*.json) or from nodes.json + CLI args.
-- Expects INAV telemetry (Status.INAV.TELEM) with lat/lon (1e7 ints) and mode bitmask.
+- Expects OCCID LocationState and FlightControlState messages.
 """
 
 import argparse
@@ -13,9 +13,7 @@ from typing import Any, Dict, List, Sequence
 
 import hivelink.protocol as hl_proto
 from hivelink.datalinks import DatalinkInterface, load_nodes_map
-
-Proto = hl_proto.Proto
-Messages = hl_proto.Messages
+from occid.schema import FlightControlState, LocationState
 
 MULTICAST_GROUP = "239.0.0.1"
 MULTICAST_PORT = 5550
@@ -145,22 +143,31 @@ async def main() -> None:
     try:
         while True:
             for msg in datalinks.receive():
-                enum_member, payload = Proto.decode_message(msg["data"])
-                msg_name = Proto.message_str_from_id(Proto.messageid(enum_member))
-                print(f"[RX] from={msg['from']} via={msg['intf']} id={msg_name}")
+                envelope, payload = hl_proto.decode_message(msg["data"])
+                print(f"[RX] from={msg['from']} via={msg['intf']} id={envelope.msg_type}")
 
-                if enum_member == Messages.Status.INAV.TELEM:
-                    modes = mode_map.names_for_mask(payload["inavmodes"])
+                if type(payload) == LocationState:
+                    position = payload.position
+                    attitude = payload.attitude
+                    velocity = payload.velocity
                     print(
-                        f"    modes={modes} "
-                        f"gs={payload['groundspeed']} "
-                        f"hdg={payload['heading']} "
-                        f"alt={payload['msl_alt']} "
-                        f"lat={payload['lat']} "
-                        f"lon={payload['lon']}"
+                        f"    gs={velocity.x if velocity else None} "
+                        f"hdg={attitude.heading if attitude else None} "
+                        f"alt={position.alt if position else None} "
+                        f"lat={position.lat if position else None} "
+                        f"lon={position.lon if position else None}"
+                    )
+                elif type(payload) == FlightControlState:
+                    mode_names = payload.active_mode_names or [
+                        mode_map.names[mode_id] for mode_id in payload.active_modes
+                    ]
+                    print(
+                        f"    armed={payload.armed} "
+                        f"flight_mode={payload.flight_mode} "
+                        f"active_modes={mode_names}"
                     )
                 else:
-                    print(f"    payload={payload}")
+                    print(f"    payload={payload.model_dump(mode='json', exclude_none=True)}")
             await asyncio.sleep(args.poll)
     except KeyboardInterrupt:
         print("Receiver stopped by user")

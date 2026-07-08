@@ -3,9 +3,9 @@
 #
 # Control an onboard ArduPilot instance via pymavlink using Hivelink messages.
 # Supports: ARM, DISARM, SET_MODE, TAKEOFF, LAND, SELECT_MISSION
-# Publishes slow, high-latency telemetry (Status.AP.HL_TELEM).
+# Publishes slow, high-latency telemetry as OCCID LocationState.
 #
-# CSV must define the Command.AP.* and Status.AP.HL_TELEM messages as listed above.
+# Commands are OCCID VehicleCommand payloads.
 
 import asyncio
 import argparse
@@ -14,10 +14,15 @@ import time
 
 import hivelink.protocol as hl_proto
 from hivelink.datalinks import DatalinkInterface, load_nodes_map
-
-Proto = hl_proto.Proto
-Messages = hl_proto.Messages
-PayloadEnum = hl_proto.PayloadEnum
+from occid.schema import (
+    AltitudeDatum,
+    EulerAngles,
+    FlightCommandType,
+    GlobalPosition,
+    LocationState,
+    VehicleCommand,
+    VelocityVector,
+)
 import traceback
 
 from pymavlink import mavutil
@@ -124,7 +129,7 @@ class MavlinkAP:
             self.master.target_component,
             mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
             0,
-            1 if arm else 0, 0, 0, 0, 0, 0, 0,
+            int(arm), 0, 0, 0, 0, 0, 0,
         )
 
     def set_mode(self, mode_str: str) -> bool:
@@ -184,34 +189,35 @@ async def hivelink_command_loop(datalinks: DatalinkInterface, ap: MavlinkAP):
         try:
             for msg in datalinks.receive():
                 try:
-                    msgtype, payload = Proto.decode_message(msg["data"])
+                    envelope, payload = hl_proto.decode_message(msg["data"])
                 except Exception as e:
                     print(f"[HL] decode error: {e}")
                     continue
 
                 # Command handlers
                 try:
-                    if msgtype == Messages.Command.AP.ARM:
-                        arm = int(payload.get("arm", 1)) != 0
+                    if type(payload) != VehicleCommand:
+                        continue
+                    if payload.command_type == FlightCommandType.ARM:
+                        arm = payload.enabled
                         ap.arm(arm)
                         print(f"[CMD] ARM={arm}")
-                    elif msgtype == Messages.Command.AP.DISARM:
+                    elif payload.command_type == FlightCommandType.DISARM:
                         ap.arm(False)
                         print(f"[CMD] DISARM")
-                    elif msgtype == Messages.Command.AP.SET_MODE:
-                        mbytes = payload.get("mode_str", b"")
-                        mode = (mbytes.decode("utf-8", errors="ignore") if isinstance(mbytes, (bytes, bytearray)) else str(mbytes)).strip()
+                    elif payload.command_type == FlightCommandType.SET_MODE:
+                        mode = payload.mode.strip()
                         ok = ap.set_mode(mode)
                         print(f"[CMD] SET_MODE {mode} -> {ok}")
-                    elif msgtype == Messages.Command.AP.TAKEOFF:
-                        alt_m = int(payload.get("alt_m", 10))
+                    elif payload.command_type == FlightCommandType.TAKEOFF:
+                        alt_m = int(payload.altitude_m)
                         ap.takeoff(alt_m)
                         print(f"[CMD] TAKEOFF alt={alt_m}m")
-                    elif msgtype == Messages.Command.AP.LAND:
+                    elif payload.command_type == FlightCommandType.LAND:
                         ap.land()
                         print(f"[CMD] LAND")
-                    elif msgtype == Messages.Command.AP.SELECT_MISSION:
-                        seq = int(payload.get("seq", 0))
+                    elif payload.command_type == FlightCommandType.SELECT_MISSION:
+                        seq = int(payload.sequence)
                         ap.select_mission(seq)
                         print(f"[CMD] SELECT_MISSION seq={seq}")
                 except Exception as e:
@@ -230,21 +236,22 @@ async def hivelink_telem_loop(datalinks: DatalinkInterface, ap: MavlinkAP, rate_
     period = 1.0 / max(rate_hz, 0.1)
     while True:
         try:
-            msg = Messages.Status.AP.HL_TELEM
             if ap.lat is None or ap.lon is None:
                 await asyncio.sleep(period)
                 continue
 
-            msg_instance = msg(
-                mode_str=ap.mode_str,
-                airspeed=int(ap.airspeed),
-                groundspeed=int(ap.groundspeed),
-                heading=int(ap.heading),
-                msl_alt=int(ap.msl_alt),
-                lat=int(ap.lat * 1e7),
-                lon=int(ap.lon * 1e7),
+            payload = LocationState(
+                position=GlobalPosition(
+                    lat=ap.lat,
+                    lon=ap.lon,
+                    alt=ap.msl_alt,
+                    alt_frame=AltitudeDatum.SEA_LEVEL,
+                ),
+                attitude=EulerAngles(heading=ap.heading),
+                velocity=VelocityVector(x=ap.groundspeed),
             )
-            encoded = msg_instance.encode()
+            envelope = hl_proto.build_envelope(payload, src=datalinks.my_name, dst="")
+            encoded = hl_proto.encode_message(envelope, payload)
             # Broadcast over all available links; adapt as you like
             datalinks.send(encoded, dest="", meshtastic=True)
         except Exception as e:

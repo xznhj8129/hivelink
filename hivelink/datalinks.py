@@ -13,6 +13,7 @@ import traceback
 import logging, base64, faulthandler, enum, math
 import paho.mqtt.client as mqtt
 import hivelink.protocol as hl_proto
+from occid.schema import MessageEnvelope, MeshNodeState, NodeHeartbeat, OCCIDModel
 
 PROTOCOL_VERSION = 1
 MAX_MESH_PACKET_SIZE = 220  # Total packet size (bytes)
@@ -20,12 +21,9 @@ SYNC_BYTE = 0xFA
 crc16 = crcmod.predefined.mkCrcFun('crc-ccitt-false')
 B64_TAG = "__b64__"
 
-Proto = hl_proto.Proto
-Messages = hl_proto.Messages
-messageid = Proto.messageid
-message_str_from_id = Proto.message_str_from_id
-encode_message = Proto.encode_message
-decode_message = Proto.decode_message
+build_envelope = hl_proto.build_envelope
+encode_message = hl_proto.encode_message
+decode_message = hl_proto.decode_message
 
 def _to_jsonable(obj):
     if obj is None or isinstance(obj, (str, int, bool)):
@@ -43,6 +41,16 @@ def _to_jsonable(obj):
     if isinstance(obj, (list, tuple, set)):
         return [_to_jsonable(v) for v in obj]
     raise TypeError(f"Not JSON-serializable: {type(obj).__name__}")
+
+
+def _from_jsonable(obj):
+    if isinstance(obj, dict):
+        if B64_TAG in obj and isinstance(obj[B64_TAG], str):
+            return base64.b64decode(obj[B64_TAG].encode("ascii"))
+        return {k: _from_jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_from_jsonable(v) for v in obj]
+    return obj
 
 # --- UDP Packet Structure Definition ---
 # [--removed/SYNC_BYTE/--, payload length, checksum, source id, destination id, payload]
@@ -173,29 +181,16 @@ class DatalinkInterface:
                 self.meshmap[meshid] = name
 
     # ---------- MQTT helpers ----------
-    def _topic_from_msg(self, enum_member) -> str:
-        # "Status.System.FLIGHT" style
-        path = message_str_from_id(messageid(enum_member))
-        category, typ, subtype = path.split(".")
-        return f"{self.mqtt_base}/from/{self.my_name}/{category}/{typ}/{subtype}"
+    def _topic_from_msg(self, envelope: MessageEnvelope) -> str:
+        return f"{self.mqtt_base}/from/{envelope.src}/{envelope.msg_type}"
 
 
-    def _from_jsonable(obj):
-        if isinstance(obj, dict):
-            if B64_TAG in obj and isinstance(obj[B64_TAG], str):
-                return base64.b64decode(obj[B64_TAG].encode("ascii"))
-            return {k: _from_jsonable(v) for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [_from_jsonable(v) for v in obj]
-        return obj
-
-    # inside class DatalinkInterface — make sure you have ONLY THIS version
-    def _json_envelope(self, intf: str, enum_member, decoded_payload: dict, source: str, tstamp: float) -> bytes:
+    def _json_envelope(self, intf: str, envelope: MessageEnvelope, payload: OCCIDModel, tstamp: float) -> bytes:
         body = {
             "intf": intf,
-            "msgid": message_str_from_id(messageid(enum_member)),
-            "data": _to_jsonable(decoded_payload),   # bytes-safe
-            "from": source,
+            "envelope": _to_jsonable(envelope.model_dump(mode="json", exclude_none=True)),
+            "payload": _to_jsonable(payload.model_dump(mode="json", exclude_none=True)),
+            "from": envelope.src,
             "time": int(tstamp),
         }
         return json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -231,7 +226,7 @@ class DatalinkInterface:
             warnings.warn(f"MQTT connect error rc={rc}")
             return
         # Subscribe to commands to any dest; incumbent gating happens in handler
-        self.mqtt_client.subscribe(f"{self.mqtt_base}/to/+/+/+/+")
+        self.mqtt_client.subscribe(f"{self.mqtt_base}/to/+/+")
         # Presence
         self.mqtt_client.publish(f"{self.mqtt_base}/from/{self.my_name}/status", b"online", qos=1, retain=True)
 
@@ -240,21 +235,21 @@ class DatalinkInterface:
 
     def _on_mqtt_message(self, _client, _userdata, m):
         try:
-            # Topic: /hivelink/v1/to/<dest>/<Category>/<Type>/<Subtype>
+            # Topic: /hivelink/v1/to/<dest>/<OCCIDModelName>
             parts = m.topic.strip("/").split("/")
-            if len(parts) < 7:
+            if len(parts) < 5:
                 return
-            _, _, direction, dest_id, category, typ, subtype = parts[:7]
+            _, _, direction, dest_id, msg_type = parts[:5]
             if direction != "to":
                 return
 
             body = json.loads(m.payload.decode("utf-8"))
             if not isinstance(body, dict):
                 return
-            data = body.get("data", body)
+            payload_data = _from_jsonable(body["payload"])
 
             # Optional: allow external systems to update presence
-            src_hint = body.get("from")
+            src_hint = body["from"]
             if src_hint:
                 self.update_localnode_seen(src_hint, "mqtt")
 
@@ -262,10 +257,9 @@ class DatalinkInterface:
             if not self.is_incumbent_for(dest_id):
                 return
 
-            # Build enum and encode
-            enum_member = getattr(getattr(getattr(Messages, category), typ), subtype)
-            payload_obj = enum_member.payload(**data)
-            encoded = encode_message(enum_member, payload_obj)
+            payload = hl_proto.PAYLOAD_MODELS[msg_type].model_validate(payload_data)
+            envelope = build_envelope(payload, src=src_hint, dst=dest_id)
+            encoded = encode_message(envelope, payload)
 
             sent = False
             try:
@@ -335,8 +329,13 @@ class DatalinkInterface:
         if self.use_meshtastic and self.mesh_client:
             self.meshid = self.mesh_client.meshint.getMyNodeInfo()['num']
             print(f"[INIT] My meshtastic ID: {self.meshid}")    
-        msg = Messages.Network.System.ONLINE
-        self.send(encode_message(msg), dest="", meshtastic=True, multicast=True, udp=True)
+        payload = NodeHeartbeat(
+            node_id=self.my_name,
+            last_seen_ts=time.time(),
+            node_state=MeshNodeState.ACTIVE,
+        )
+        envelope = build_envelope(payload, src=self.my_name, dst="")
+        self.send(encode_message(envelope, payload), dest="", meshtastic=True, multicast=True, udp=True)
 
     def stop(self):
         self.running = False
@@ -410,12 +409,12 @@ class DatalinkInterface:
                         warnings.warn(f"Datalink Multicast listen error: {str(e)}")
             await asyncio.sleep(0.1)
 
-    def _publish_to_mqtt(self, src: str, intf: str, enum_member, decoded_payload: dict, tstamp: float):
+    def _publish_to_mqtt(self, intf: str, envelope: MessageEnvelope, payload: OCCIDModel, tstamp: float):
         if not (self.mqtt_enable and self.mqtt_client and self._mqtt_connected):
             return
         try:
-            topic = self._topic_from_msg(enum_member)
-            env = self._json_envelope(intf, enum_member, decoded_payload, src, tstamp)
+            topic = self._topic_from_msg(envelope)
+            env = self._json_envelope(intf, envelope, payload, tstamp)
             self.mqtt_client.publish(topic, env, qos=0, retain=False)
         except Exception as e:
             sys.__stderr__.write(f"MQTT publish failed: {e}\n")
@@ -500,8 +499,8 @@ class DatalinkInterface:
         # Presence update and optional MQTT publish (decoded here; the caller still gets raw)
         for msg in messages:
             self.update_localnode_seen(msg["from"], msg["intf"], ts=msg.get("time", time.time()))
-            enum_member, decoded_payload = decode_message(msg["data"])
-            self._publish_to_mqtt(msg["from"], msg["intf"], enum_member, decoded_payload, msg.get("time", time.time()))
+            envelope, payload = decode_message(msg["data"])
+            self._publish_to_mqtt(msg["intf"], envelope, payload, msg.get("time", time.time()))
 
         return messages
 
