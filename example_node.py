@@ -3,6 +3,7 @@
 
 import argparse
 import asyncio
+from datetime import datetime, timezone
 import json
 import sys
 
@@ -10,7 +11,14 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 
 from hivelink.datalinks import DatalinkInterface, load_nodes_map
-from occid import HumanTextMessage, MessageTarget, StringID, IdentifierType
+from occid import (
+    HumanTextMessage,
+    IdentifierType,
+    MessagePriority,
+    MessageTarget,
+    StringID,
+    Timestamp,
+)
 
 session = PromptSession("> ")
 
@@ -19,8 +27,22 @@ def sid(value: str) -> StringID:
     return StringID(id_type=IdentifierType.DB_ID, value=value)
 
 
+def timestamp_now() -> Timestamp:
+    now = datetime.now(timezone.utc)
+    return Timestamp(
+        seconds=now.second + now.microsecond / 1_000_000.0,
+        minutes=now.minute,
+        hours=now.hour,
+        day=now.day,
+        month=now.month,
+        year=now.year,
+        tz=0,
+    )
+
+
 async def send_loop(datalinks: DatalinkInterface, my_name: str):
     destination = "gcs1" if my_name != "gcs1" else "drone1"
+    seq = 0
     while True:
         try:
             text = await session.prompt_async()
@@ -44,11 +66,20 @@ async def send_loop(datalinks: DatalinkInterface, my_name: str):
         elif send_mc:
             text = text[len("/mc "):]
 
+        seq += 1
+        src = MessageTarget(target_id=sid(my_name))
+        dst = MessageTarget(target_id=sid(destination))
         payload = HumanTextMessage(
-            sender_id=my_name,
-            destination_id=destination,
+            src=src,
+            dst=dst,
+            ts=timestamp_now(),
+            priority=MessagePriority.ROUTINE,
+            seq=seq,
+            sender_id=sid(my_name),
+            sender_name=my_name,
+            destination_id=sid(destination),
             message=text,
-            targets=[MessageTarget(target_id=sid(destination))],
+            targets=[dst],
         )
         sent = datalinks.send_model(
             payload,
@@ -154,7 +185,7 @@ async def main():
         with patch_stdout():
             send_task = asyncio.create_task(send_loop(datalinks, my_name))
             recv_task = asyncio.create_task(receive_loop(datalinks))
-            done, pending = await asyncio.wait(
+            _, pending = await asyncio.wait(
                 {send_task, recv_task},
                 return_when=asyncio.FIRST_COMPLETED,
             )
