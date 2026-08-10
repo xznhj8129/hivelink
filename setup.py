@@ -28,13 +28,11 @@ setup(
     extras_require={
         "mqtt": ["paho-mqtt>=1.6"],
         "meshtastic": ["frogtastic"],
-        "examples": ["frogcot", "froggeolib", "pymavlink"],
+        "cli": ["prompt-toolkit"],
         "all": [
             "paho-mqtt>=1.6",
             "frogtastic",
-            "frogcot",
-            "froggeolib",
-            "pymavlink",
+            "prompt-toolkit",
         ],
     },
     classifiers=[
