@@ -125,7 +125,6 @@ async def main():
         my_id = int(cfg.get("my_id", 0))
         mesh = cfg.get("meshtastic", {})
         udp = cfg.get("udp", {})
-        mqtt = cfg.get("mqtt", {})
         use_meshtastic = bool(mesh.get("use", False))
         radio_serial = mesh.get("radio_serial")
         app_portnum = int(mesh.get("app_portnum", 260))
@@ -135,10 +134,6 @@ async def main():
         use_multicast = bool(udp.get("use_multicast", False))
         multicast_group = str(udp.get("multicast_group", ""))
         multicast_port = int(udp.get("multicast_port", socket_port))
-        mqtt_enable = bool(mqtt.get("use", False))
-        mqtt_broker = str(mqtt.get("broker", ""))
-        mqtt_port = int(mqtt.get("port", 1883))
-        mqtt_base = str(mqtt.get("base", "/hivelink/v2"))
     else:
         if not args.my_id or args.my_id not in nodemap:
             print(f"Error: Node id '{args.my_id}' not found in nodes.json")
@@ -154,10 +149,6 @@ async def main():
         use_meshtastic = bool(args.meshtastic_device)
         radio_serial = args.meshtastic_device or None
         app_portnum = 260
-        mqtt_enable = False
-        mqtt_broker = ""
-        mqtt_port = 1883
-        mqtt_base = "/hivelink/v2"
 
     datalinks = DatalinkInterface(
         use_meshtastic=use_meshtastic,
@@ -172,11 +163,6 @@ async def main():
         nodemap=nodemap,
         multicast_group=multicast_group,
         multicast_port=multicast_port,
-        mqtt_enable=mqtt_enable,
-        mqtt_broker=mqtt_broker,
-        mqtt_port=mqtt_port,
-        mqtt_client_id=my_name,
-        mqtt_base=mqtt_base,
     )
 
     datalinks.start()
