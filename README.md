@@ -12,11 +12,11 @@ control     192.168.0.220:5555
 autonomous  192.168.0.230:5555
 ```
 
-A static node map and direct packet send/receive are a permanent supported baseline. 802.11s, BATMAN, HaLow, Meshtastic, LTE, Starlink, VPNs, multiple bearers, constrained profiles, path policy, fragmentation, store-and-forward, and other communications work may be added behind the same interface without changing the application semantics above it.
+A static node map and direct packet send/receive are a permanent supported baseline. 802.11s, BATMAN, HaLow, additional radio bearers, LTE, Starlink, VPNs, multi-bearer policy, constrained profiles, fragmentation, store-and-forward, and other communications work may be added behind the same interface without changing application semantics above it.
 
 **OCCID is the data model. HiveLink is delivery.** HiveLink does not define a competing command/state/network ontology. Operationally meaningful link, node, network, topology, reachability, quality, delivery, and communications observations are represented with OCCID models when another component needs to know, store, display, or reason about them.
 
-HiveLink is still experimental and its advanced delivery machinery will remain in flux. The direct-IP baseline is deliberately kept small so applications do not need the entire communications roadmap merely to use the correct boundary.
+HiveLink is still experimental. The direct-IP baseline is deliberately kept small so applications do not need the entire communications roadmap merely to use the correct boundary.
 
 ## OCCID wire payload
 
@@ -24,18 +24,12 @@ HiveLink does not wrap OCCID in a second class-name schema.
 
 ```python
 from hivelink.protocol import encode_message, decode_message
-from occid import HumanTextMessage
+from occid import AddressKind, NetworkAddress
 
-payload = HumanTextMessage(
-    sender_id="node1",
-    destination_id="node2",
-    message="hello",
-    targets=[],
-)
-
+payload = NetworkAddress(kind=AddressKind.IPV4, value="192.168.0.230", port=5555)
 encoded = encode_message(payload)   # OCCIDModel.encode()
 decoded = decode_message(encoded)   # occid.decode_model()
-assert type(decoded) is HumanTextMessage
+assert type(decoded) is NetworkAddress
 ```
 
 The payload inside a HiveLink frame is exactly OCCID's canonical transient encoding: schema version, permanent model ID, and named fields.
@@ -49,58 +43,59 @@ That addressing is delivery machinery, not a replacement for OCCID `Node`, `Netw
 
 ## Minimal direct-IP use
 
-`DatalinkInterface` hides the bearer. A node map can be as small as:
-
-```json
-{
-  "control": {"ip": ["192.168.0.220", 5555]},
-  "uav1": {"ip": ["192.168.0.230", 5555]}
-}
-```
-
-Then:
+`DatalinkInterface` is asynchronous because receivers run on the caller's event loop:
 
 ```python
+import asyncio
+
 from hivelink.datalinks import DatalinkInterface
+from occid import AddressKind, NetworkAddress
 
-link = DatalinkInterface(
-    use_udp=True,
-    socket_host="0.0.0.0",
-    socket_port=5555,
-    my_name="control",
-    nodemap={
-        "control": {"ip": ["192.168.0.220", 5555]},
-        "uav1": {"ip": ["192.168.0.230", 5555]},
-    },
-)
 
-link.start()
-link.send_model(payload, "uav1")
+async def main():
+    link = DatalinkInterface(
+        use_udp=True,
+        socket_host="192.168.0.220",
+        socket_port=5555,
+        my_name="control",
+        nodemap={
+            "control": {"ip": ["192.168.0.220", 5555]},
+            "uav1": {"ip": ["192.168.0.230", 5555]},
+        },
+    )
+    link.start()
+    try:
+        payload = NetworkAddress(
+            kind=AddressKind.IPV4,
+            value="192.168.0.230",
+            port=5555,
+        )
+        link.send_model(payload, "uav1")
+        await asyncio.sleep(0.1)
+        for message in link.receive_models():
+            print(message["from"], type(message["model"]).__name__)
+    finally:
+        link.stop()
 
-for message in link.receive_models():
-    print(message["from"], type(message["model"]).__name__)
+
+asyncio.run(main())
 ```
 
-The default package install contains only the direct core. Optional bearer dependencies are explicit extras:
-
-```bash
-pip install -e .[mqtt]
-pip install -e .[meshtastic]
-pip install -e .[all]
-```
-
-Conqueror Frog does not install those extras for the direct-IP path.
-
-## Bearers
-
-Current/experimental bearer surfaces include:
+## Implemented bearers
 
 - direct UDP unicast;
 - UDP multicast;
-- Meshtastic;
-- MQTT gateway/bearer integration.
+- Meshtastic when the optional `frogtastic` dependency is installed.
 
-These are HiveLink implementation choices. An OCCID-native application should address a HiveLink node and send OCCID rather than select a vehicle protocol or inspect another process's private IPC.
+The default package install contains only the direct core. Optional extras are explicit:
+
+```bash
+pip install -e .[meshtastic]
+pip install -e .[cli]
+pip install -e .[all]
+```
+
+Conqueror Frog installs only the direct core for its reference IP path.
 
 ## Relationship to Conqueror Frog
 
@@ -123,4 +118,4 @@ MPFC's MQTT bus is private node-local IPC. Exposing that broker or its topic nam
 
 ## Example
 
-`example_node.py` is the maintained interactive OCCID node example for direct UDP, with optional Meshtastic use when that extra is installed.
+`example_node.py` is the maintained interactive OCCID node example for direct UDP, with optional Meshtastic use when that extra is installed. Install the `cli` extra to run it.
