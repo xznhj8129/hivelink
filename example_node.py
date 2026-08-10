@@ -1,163 +1,132 @@
 #!/usr/bin/env python3
-# example_node.py
-# simple example node with text chat + MQTT I/O relay handled inside datalinks
+"""Small interactive HiveLink node using the direct OCCID model API."""
 
-import asyncio
 import argparse
-import sys
+import asyncio
 import json
+import sys
+
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 
-import hivelink.protocol as hl_proto
 from hivelink.datalinks import DatalinkInterface, load_nodes_map
-from occid.schema import HumanTextMessage
-import frogtastic
+from occid import HumanTextMessage, MessageTarget, StringID, IdentifierType
 
 session = PromptSession("> ")
 
 
+def sid(value: str) -> StringID:
+    return StringID(id_type=IdentifierType.DB_ID, value=value)
+
+
 async def send_loop(datalinks: DatalinkInterface, my_name: str):
-    default_dest = "gcs1" if my_name != "gcs1" else "drone1"
-    destination = default_dest
+    destination = "gcs1" if my_name != "gcs1" else "drone1"
     while True:
         try:
             text = await session.prompt_async()
         except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
             return
 
-        if not text.strip():
+        text = text.strip()
+        if not text:
             continue
-        if text.strip().lower() in {"/q", "/quit", "/exit"}:
+        if text.lower() in {"/q", "/quit", "/exit"}:
             return
-
-        send_mc = False
-        send_mesh = False
-        send_udp = False
-        payload_text = ""
-
-        if text.startswith("/mesh "):
-            payload_text = text[len("/mesh "):]
-            send_mesh = True
-        elif text.startswith("/mc "):
-            payload_text = text[len("/mc "):]
-            send_mc = True
-        elif text.startswith("/dest"):
-            parts = text.split(maxsplit=1)
-            if len(parts) < 2 or not parts[1].strip():
-                print("Destination not provided")
-                continue
-            destination = parts[1].strip()
+        if text.startswith("/dest "):
+            destination = text.split(maxsplit=1)[1].strip()
             print("Set destination:", destination)
             continue
-        else:
-            payload_text = text
-            send_udp = True
 
-        if send_mc or send_mesh or send_udp: 
-            payload = HumanTextMessage(
-                sender_id=my_name,
-                destination_id=destination,
-                message=payload_text,
-            )
-            envelope = hl_proto.build_envelope(payload, src=my_name, dst=destination)
-            encoded = hl_proto.encode_message(envelope, payload)
-            datalinks.send(encoded, dest=destination, meshtastic=send_mesh, multicast=send_mc, udp=send_udp)
-        
+        send_mesh = text.startswith("/mesh ")
+        send_mc = text.startswith("/mc ")
+        if send_mesh:
+            text = text[len("/mesh "):]
+        elif send_mc:
+            text = text[len("/mc "):]
+
+        payload = HumanTextMessage(
+            sender_id=my_name,
+            destination_id=destination,
+            message=text,
+            targets=[MessageTarget(target_id=sid(destination))],
+        )
+        sent = datalinks.send_model(
+            payload,
+            destination,
+            udp=not send_mesh and not send_mc,
+            meshtastic=send_mesh,
+            multicast=send_mc,
+        )
+        if not sent:
+            print(f"Send failed: {destination}")
 
 
 async def receive_loop(datalinks: DatalinkInterface):
     try:
         while True:
-            for msg in datalinks.receive():
-                try:
-                    envelope, payload = hl_proto.decode_message(msg["data"])
-                    if type(payload) == HumanTextMessage:
-                        print(f"{msg['from']}({msg['intf']}): {payload.message}")
-                    else:
-                        print(f"[RECEIVED] {envelope.msg_type} from {msg['from']} via {msg['intf']}")
-                        print(payload.model_dump(mode="json", exclude_none=True))
-                except Exception as e:
-                    print(f"[RECEIVED] Error decoding message: {e}")
+            for msg in datalinks.receive_models():
+                payload = msg["model"]
+                if isinstance(payload, HumanTextMessage):
+                    print(f"{msg['from']}({msg['intf']}): {payload.message}")
+                else:
+                    print(
+                        f"[RECEIVED] {type(payload).__name__} "
+                        f"from {msg['from']} via {msg['intf']}"
+                    )
+                    print(payload.model_dump(mode="json", exclude_none=True))
             await asyncio.sleep(0.1)
     except (asyncio.CancelledError, KeyboardInterrupt):
         return
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Terminal chat program")
-
-    parser.add_argument("--config", default="", help="Use json config file")
-
-    parser.add_argument("--my_id", required=False, help="Node id as defined in nodes.json")
-    parser.add_argument("--meshtastic_device", default="", help="Serial path to Meshtastic device")
-
-    parser.add_argument("--mqtt_broker", default="", help="MQTT broker host (enables MQTT I/O if set)")
-    parser.add_argument("--mqtt_port", type=int, default=1883, help="MQTT broker port")
-    parser.add_argument("--mqtt_client_id", default="", help="MQTT client id (defaults to my_id if empty)")
-    parser.add_argument("--mqtt_user", default=None, help="MQTT username")
-    parser.add_argument("--mqtt_pass", default=None, help="MQTT password")
-
+    parser = argparse.ArgumentParser(description="HiveLink terminal node")
+    parser.add_argument("--config", default="", help="Use JSON config file")
+    parser.add_argument("--my_id", help="Node id as defined in nodes.json")
+    parser.add_argument("--meshtastic_device", default="")
     args = parser.parse_args()
+
     nodemap = load_nodes_map()
-    
     if args.config:
-        with open(args.config, "r") as f:
-            cfg = json.load(f)
-
+        with open(args.config, "r", encoding="utf-8") as handle:
+            cfg = json.load(handle)
         my_name = cfg["my_name"]
-        my_id = cfg["my_id"]
-
-        # Meshtastic
-        use_meshtastic = bool(cfg["meshtastic"]["use"])
-        radio_serial = cfg["meshtastic"]["radio_serial"]
-        app_portnum = int(cfg["meshtastic"]["app_portnum"])
-
-        # UDP
-        use_udp = bool(cfg["udp"]["use"])
-        socket_host = cfg["udp"]["host"]
-        socket_port = int(cfg["udp"]["port"])
-        use_multicast = bool(cfg["udp"]["use_multicast"])
-        multicast_group = cfg["udp"]["multicast_group"]
-        multicast_port = int(cfg["udp"]["multicast_port"])
-
-        # MQTT
-        mqtt_enable = bool(cfg["mqtt"]["use"])
-        mqtt_base = cfg["mqtt"]["base"]
-        mqtt_broker = cfg["mqtt"]["broker"]
-        mqtt_port = int(cfg["mqtt"]["port"])
-        mqtt_client_id = cfg["mqtt"]["client_id"] if cfg["mqtt"]["client_id"] else my_name
-        mqtt_username = cfg["mqtt"]["username"]
-        mqtt_password = cfg["mqtt"]["password"]
-
+        my_id = int(cfg.get("my_id", 0))
+        mesh = cfg.get("meshtastic", {})
+        udp = cfg.get("udp", {})
+        mqtt = cfg.get("mqtt", {})
+        use_meshtastic = bool(mesh.get("use", False))
+        radio_serial = mesh.get("radio_serial")
+        app_portnum = int(mesh.get("app_portnum", 260))
+        use_udp = bool(udp.get("use", True))
+        socket_host = str(udp.get("host", "0.0.0.0"))
+        socket_port = int(udp.get("port", 5555))
+        use_multicast = bool(udp.get("use_multicast", False))
+        multicast_group = str(udp.get("multicast_group", ""))
+        multicast_port = int(udp.get("multicast_port", socket_port))
+        mqtt_enable = bool(mqtt.get("use", False))
+        mqtt_broker = str(mqtt.get("broker", ""))
+        mqtt_port = int(mqtt.get("port", 1883))
+        mqtt_base = str(mqtt.get("base", "/hivelink/v2"))
     else:
         if not args.my_id or args.my_id not in nodemap:
             print(f"Error: Node id '{args.my_id}' not found in nodes.json")
             sys.exit(1)
-
         my_name = args.my_id
-        my_id = nodemap[my_name]["meshid"]
-        socket_host, socket_port = nodemap[my_name]["ip"]
-
-        # Meshtastic
-        use_meshtastic = bool(args.meshtastic_device != "")
-        radio_serial = args.meshtastic_device
-        app_portnum = 260
-
-        # UDP
+        my_id = int(nodemap[my_name].get("meshid", 0))
+        socket_host = "0.0.0.0"
+        socket_port = int(nodemap[my_name]["ip"][1])
         use_udp = True
-        use_multicast = True
-        multicast_group = "239.0.0.1"
-        multicast_port = 5550
-
-        # MQTT
-        mqtt_enable = bool(args.mqtt_broker)
-        mqtt_base = "/hivelink/v1"
-        mqtt_broker = args.mqtt_broker
-        mqtt_port = args.mqtt_port
-        mqtt_client_id = args.mqtt_client_id if args.mqtt_client_id else my_name
-        mqtt_username = args.mqtt_user
-        mqtt_password = args.mqtt_pass
+        use_multicast = False
+        multicast_group = ""
+        multicast_port = socket_port
+        use_meshtastic = bool(args.meshtastic_device)
+        radio_serial = args.meshtastic_device or None
+        app_portnum = 260
+        mqtt_enable = False
+        mqtt_broker = ""
+        mqtt_port = 1883
+        mqtt_base = "/hivelink/v2"
 
     datalinks = DatalinkInterface(
         use_meshtastic=use_meshtastic,
@@ -175,35 +144,24 @@ async def main():
         mqtt_enable=mqtt_enable,
         mqtt_broker=mqtt_broker,
         mqtt_port=mqtt_port,
-        mqtt_client_id=mqtt_client_id,
-        mqtt_username=mqtt_username,
-        mqtt_password=mqtt_password,
+        mqtt_client_id=my_name,
         mqtt_base=mqtt_base,
-        incumbent_window=600,
     )
 
-
     datalinks.start()
-
     send_task = recv_task = None
     try:
         with patch_stdout():
-            send_task = asyncio.create_task(send_loop(datalinks, my_name), name="send_loop")
-            recv_task = asyncio.create_task(receive_loop(datalinks), name="recv_loop")
-
-            done, pending = await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
-            for t in pending:
-                t.cancel()
+            send_task = asyncio.create_task(send_loop(datalinks, my_name))
+            recv_task = asyncio.create_task(receive_loop(datalinks))
+            done, pending = await asyncio.wait(
+                {send_task, recv_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
                 try:
-                    await t
-                except asyncio.CancelledError:
-                    pass
-    except KeyboardInterrupt:
-        for t in (send_task, recv_task):
-            if t and not t.done():
-                t.cancel()
-                try:
-                    await t
+                    await task
                 except asyncio.CancelledError:
                     pass
     finally:
