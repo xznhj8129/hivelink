@@ -1,31 +1,45 @@
 # hivelink/datalinks.py
-import asyncio
-import socket
-import warnings
-import json
-from typing import Optional, Dict, Any, List, Tuple
-import time
-import crcmod
-import sys
-import msgpack
-from frogtastic import MeshtasticClient
-import traceback
-import logging, base64, faulthandler, enum, math
-import paho.mqtt.client as mqtt
-import hivelink.protocol as hl_proto
-from occid.schema import MessageEnvelope, MeshNodeState, NodeHeartbeat, OCCIDModel
+from __future__ import annotations
 
-PROTOCOL_VERSION = 1
-MAX_MESH_PACKET_SIZE = 220  # Total packet size (bytes)
-SYNC_BYTE = 0xFA
-crc16 = crcmod.predefined.mkCrcFun('crc-ccitt-false')
+import asyncio
+import base64
+import enum
+import json
+import math
+import socket
+import sys
+import time
+import traceback
+import warnings
+from typing import Any, Dict, List, Optional, Tuple
+
+import crcmod
+import msgpack
+
+import hivelink.protocol as hl_proto
+from occid import OCCIDModel
+
+try:
+    import paho.mqtt.client as mqtt
+except ImportError:  # Optional bearer.
+    mqtt = None
+
+try:
+    from frogtastic import MeshtasticClient
+except ImportError:  # Optional bearer.
+    MeshtasticClient = None
+
+
+PROTOCOL_VERSION = 2
+MAX_MESH_PACKET_SIZE = 220
+crc16 = crcmod.predefined.mkCrcFun("crc-ccitt-false")
 B64_TAG = "__b64__"
 
-build_envelope = hl_proto.build_envelope
 encode_message = hl_proto.encode_message
 decode_message = hl_proto.decode_message
 
-def _to_jsonable(obj):
+
+def _to_jsonable(obj: Any) -> Any:
     if obj is None or isinstance(obj, (str, int, bool)):
         return obj
     if isinstance(obj, float):
@@ -35,7 +49,7 @@ def _to_jsonable(obj):
     if isinstance(obj, enum.IntEnum):
         return int(obj)
     if isinstance(obj, enum.Enum):
-        return obj.name
+        return obj.value
     if isinstance(obj, dict):
         return {str(k): _to_jsonable(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple, set)):
@@ -43,7 +57,7 @@ def _to_jsonable(obj):
     raise TypeError(f"Not JSON-serializable: {type(obj).__name__}")
 
 
-def _from_jsonable(obj):
+def _from_jsonable(obj: Any) -> Any:
     if isinstance(obj, dict):
         if B64_TAG in obj and isinstance(obj[B64_TAG], str):
             return base64.b64decode(obj[B64_TAG].encode("ascii"))
@@ -52,41 +66,45 @@ def _from_jsonable(obj):
         return [_from_jsonable(v) for v in obj]
     return obj
 
-# --- UDP Packet Structure Definition ---
-# [--removed/SYNC_BYTE/--, payload length, checksum, source id, destination id, payload]
+
+# HiveLink delivery frame for UDP/multicast. The payload is canonical OCCID
+# bytes; source/destination here are delivery addressing, not a second ontology.
 def encode_udp_packet(source: str, destination: Optional[str], payload: bytes) -> bytes:
     s = source.encode("utf-8")
     d = (destination or "").encode("utf-8")
     checksum = crc16(s + d + payload)
-    plen = len(payload)
-    packet = msgpack.packb([plen, checksum, s, d, payload])
-    return packet
+    return msgpack.packb([len(payload), checksum, s, d, payload], use_bin_type=True)
 
 
 def decode_udp_packet(packet: bytes) -> Tuple[str, str, bytes]:
-    data = msgpack.unpackb(packet, use_list=True)
-    if len(data) != 5: #6
-        raise ValueError("Protocol Error: Packet length mismatch.")
+    data = msgpack.unpackb(packet, use_list=True, raw=False)
+    if len(data) != 5:
+        raise ValueError("Protocol Error: packet field count mismatch")
+    length, checksum, source, destination, payload = data
+    if isinstance(source, str):
+        source_b = source.encode("utf-8")
     else:
-        #syncbyte, length, checksum, source, destination, payload = data
-        length, checksum, source, destination, payload = data
-
-    #if syncbyte != SYNC_BYTE:
-    #    raise ValueError("Protocol Error: Sync byte mismatch")
-
-    plen = len(payload)
-    if plen != length:
-        raise ValueError("Protocol Error: Length mismatch")
-
-    # Verify checksum
-    calc_checksum = crc16(source + destination + payload)
-    if calc_checksum != checksum:
-        raise ValueError("Protocol Error: Checksum mismatch.")
-
-    return source.decode("utf-8"), destination.decode("utf-8"), payload
+        source_b = bytes(source)
+    if isinstance(destination, str):
+        destination_b = destination.encode("utf-8")
+    else:
+        destination_b = bytes(destination)
+    payload_b = bytes(payload)
+    if len(payload_b) != int(length):
+        raise ValueError("Protocol Error: payload length mismatch")
+    if crc16(source_b + destination_b + payload_b) != int(checksum):
+        raise ValueError("Protocol Error: checksum mismatch")
+    return source_b.decode("utf-8"), destination_b.decode("utf-8"), payload_b
 
 
 class DatalinkInterface:
+    """Small delivery facade over HiveLink bearers.
+
+    The permanent baseline is intentionally boring: a static node map plus UDP
+    is sufficient. Other bearers remain optional implementations behind this
+    same interface.
+    """
+
     def __init__(
         self,
         use_meshtastic: bool = False,
@@ -96,11 +114,11 @@ class DatalinkInterface:
         radio_port: Optional[str] = None,
         meshtastic_dataport: int = 260,
         meshtastic_channel: int = 0,
-        socket_host: str = "127.0.0.1",
+        socket_host: str = "0.0.0.0",
         socket_port: int = 5555,
         my_name: str = "",
         my_id: int = 0,
-        nodemap: Dict[str, Dict[str, Any]] = {},
+        nodemap: Optional[Dict[str, Dict[str, Any]]] = None,
         multicast_group: str = "",
         multicast_port: Optional[int] = None,
         mqtt_enable: bool = False,
@@ -109,59 +127,59 @@ class DatalinkInterface:
         mqtt_client_id: str = "",
         mqtt_username: Optional[str] = None,
         mqtt_password: Optional[str] = None,
-        mqtt_base: str = "/hivelink/v1",
+        mqtt_base: str = "/hivelink/v2",
         incumbent_window: int = 600,
-    ):
-        if not (use_meshtastic or use_udp):
-            raise ValueError("At least one datalinks mode must be enabled.")
+    ) -> None:
+        if not (use_meshtastic or use_udp or mqtt_enable):
+            raise ValueError("At least one HiveLink bearer must be enabled")
 
-        self.nodemap = nodemap
-
-        self.use_multicast = use_multicast
-        self.use_udp = use_udp
-        self.my_name = my_name
-
-        self.socket_host = socket_host
-        self.socket_port = socket_port
-
-        self.udp_sock = None
-        self.multicast_sock = None
+        self.nodemap = dict(nodemap or {})
+        self.use_multicast = bool(use_multicast)
+        self.use_udp = bool(use_udp)
+        self.my_name = str(my_name)
+        self.socket_host = str(socket_host)
+        self.socket_port = int(socket_port)
+        self.udp_sock: socket.socket | None = None
+        self.multicast_sock: socket.socket | None = None
         self.rx_buffer: List[Dict[str, Any]] = []
         self.running = False
-        self.loop = asyncio.get_event_loop()
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self._listen_tasks: list[asyncio.Task] = []
         self.meshmap: Dict[int, str] = {}
 
-        # Meshtastic
-        self.use_meshtastic = use_meshtastic
-        self.meshid = my_id
+        self.use_meshtastic = bool(use_meshtastic)
+        self.meshid = int(my_id)
         self.mesh_client = None
         self.radio_port = radio_port
-        self.link_port = meshtastic_dataport
-        self.meshtastic_channel = meshtastic_channel
+        self.link_port = int(meshtastic_dataport)
+        self.meshtastic_channel = int(meshtastic_channel)
 
-        # Multicast
-        self.multicast_group = multicast_group
-        self.multicast_port = multicast_port if multicast_port is not None else self.socket_port
+        self.multicast_group = str(multicast_group)
+        self.multicast_port = int(multicast_port if multicast_port is not None else self.socket_port)
 
-        # Presence/incumbent tracking
         self.localnodes: Dict[str, Dict[str, Any]] = {}
         self.incumbent_window = int(incumbent_window)
 
-        # MQTT
         self.mqtt_enable = bool(mqtt_enable and mqtt is not None and mqtt_broker)
-        self.mqtt_broker = mqtt_broker
+        self.mqtt_broker = str(mqtt_broker)
         self.mqtt_port = int(mqtt_port)
-        self.mqtt_client_id = mqtt_client_id
+        self.mqtt_client_id = str(mqtt_client_id)
         self.mqtt_username = mqtt_username
         self.mqtt_password = mqtt_password
         self.mqtt_base = mqtt_base.rstrip("/")
         self.mqtt_client = None
         self._mqtt_connected = False
 
-    # ---------- Presence / incumbent ----------
-    def update_localnode_seen(self, src: str, intf: str, rssi=None, latency=None, ts: Optional[float] = None):
+    def update_localnode_seen(
+        self,
+        src: str,
+        intf: str,
+        rssi: Any = None,
+        latency: Any = None,
+        ts: Optional[float] = None,
+    ) -> None:
         self.localnodes[src] = {
-            "last_seen": int(ts if ts is not None else 0),
+            "last_seen": float(time.time() if ts is None else ts),
             "intf": intf,
             "rssi": rssi,
             "latency": latency,
@@ -171,340 +189,335 @@ class DatalinkInterface:
         nfo = self.localnodes.get(dest_id)
         if not nfo:
             return False
-        return (time.time() - nfo["last_seen"]) <= self.incumbent_window
+        return (time.time() - float(nfo["last_seen"])) <= self.incumbent_window
 
-    # ---------- Mesh node id mapping ----------
-    def map_mesh_nodes(self):
+    def map_mesh_nodes(self) -> None:
         for name, info in self.nodemap.items():
             meshid = info.get("meshid", 0)
             if meshid:
-                self.meshmap[meshid] = name
+                self.meshmap[int(meshid)] = name
 
-    # ---------- MQTT helpers ----------
-    def _topic_from_msg(self, envelope: MessageEnvelope) -> str:
-        return f"{self.mqtt_base}/from/{envelope.src}/{envelope.msg_type}"
+    def _topic_from_model(self, source: str, model: OCCIDModel) -> str:
+        return f"{self.mqtt_base}/from/{source}/{type(model).__name__}"
 
-
-    def _json_envelope(self, intf: str, envelope: MessageEnvelope, payload: OCCIDModel, tstamp: float) -> bytes:
+    def _json_model(self, intf: str, source: str, model: OCCIDModel, tstamp: float) -> bytes:
         body = {
             "intf": intf,
-            "envelope": _to_jsonable(envelope.model_dump(mode="json", exclude_none=True)),
-            "payload": _to_jsonable(payload.model_dump(mode="json", exclude_none=True)),
-            "from": envelope.src,
-            "time": int(tstamp),
+            "from": source,
+            "time": float(tstamp),
+            "model_type": type(model).__name__,
+            "payload": _to_jsonable(model.model_dump(mode="json", exclude_none=True)),
         }
         return json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
-
-    def _setup_mqtt(self):
+    def _setup_mqtt(self) -> None:
         if not self.mqtt_enable:
             return
+        if mqtt is None:
+            raise RuntimeError("paho-mqtt is required when the MQTT bearer is enabled")
         try:
-            self.mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=self.mqtt_client_id)
+            self.mqtt_client = mqtt.Client(
+                mqtt.CallbackAPIVersion.VERSION2,
+                client_id=self.mqtt_client_id,
+            )
             if self.mqtt_username or self.mqtt_password:
                 self.mqtt_client.username_pw_set(self.mqtt_username or "", self.mqtt_password or "")
-
             self.mqtt_client.on_connect = self._on_mqtt_connect
             self.mqtt_client.on_message = self._on_mqtt_message
             self.mqtt_client.on_disconnect = self._on_mqtt_disconnect
-
-            self.mqtt_client.connect(
-                self.mqtt_broker,
-                self.mqtt_port,
-                keepalive=30,
-                clean_start=mqtt.MQTT_CLEAN_START_FIRST_ONLY,
-            )
+            self.mqtt_client.connect(self.mqtt_broker, self.mqtt_port, keepalive=30)
             self.mqtt_client.loop_start()
-        except Exception as e:
-            warnings.warn(f"MQTT setup failed: {e}")
+        except Exception as exc:
+            warnings.warn(f"HiveLink MQTT setup failed: {exc}")
             self.mqtt_enable = False
             self.mqtt_client = None
 
-    def _on_mqtt_connect(self, _client, _userdata, _flags, rc, _properties=None):
-        self._mqtt_connected = (rc == 0)
+    def _on_mqtt_connect(self, _client, _userdata, _flags, rc, _properties=None) -> None:
+        self._mqtt_connected = int(rc) == 0
         if not self._mqtt_connected:
-            warnings.warn(f"MQTT connect error rc={rc}")
+            warnings.warn(f"HiveLink MQTT connect error rc={rc}")
             return
-        # Subscribe to commands to any dest; incumbent gating happens in handler
         self.mqtt_client.subscribe(f"{self.mqtt_base}/to/+/+")
-        # Presence
-        self.mqtt_client.publish(f"{self.mqtt_base}/from/{self.my_name}/status", b"online", qos=1, retain=True)
+        self.mqtt_client.publish(
+            f"{self.mqtt_base}/from/{self.my_name}/status",
+            b"online",
+            qos=1,
+            retain=True,
+        )
 
-    def _on_mqtt_disconnect(self, *_args, **_kwargs):
+    def _on_mqtt_disconnect(self, *_args, **_kwargs) -> None:
         self._mqtt_connected = False
 
-    def _on_mqtt_message(self, _client, _userdata, m):
+    def _on_mqtt_message(self, _client, _userdata, message) -> None:
+        """Optional MQTT-to-HiveLink bridge for existing installations.
+
+        MQTT is merely another HiveLink bearer/gateway here. It is unrelated to
+        MPFC's private node-local MQTT IPC.
+        """
         try:
-            # Topic: /hivelink/v1/to/<dest>/<OCCIDModelName>
-            parts = m.topic.strip("/").split("/")
+            parts = message.topic.strip("/").split("/")
             if len(parts) < 5:
                 return
-            _, _, direction, dest_id, msg_type = parts[:5]
+            _, _, direction, dest_id, _model_name = parts[:5]
             if direction != "to":
                 return
-
-            body = json.loads(m.payload.decode("utf-8"))
-            if not isinstance(body, dict):
+            body = json.loads(message.payload.decode("utf-8"))
+            source = str(body.get("from") or "mqtt")
+            encoded_b64 = body.get("occid_b64")
+            if not encoded_b64:
                 return
-            payload_data = _from_jsonable(body["payload"])
+            encoded = base64.b64decode(str(encoded_b64), validate=True)
+            decode_message(encoded)
+            self.update_localnode_seen(source, "mqtt")
+            self.send(encoded, dest=dest_id, udp=self.use_udp, meshtastic=self.use_meshtastic)
+        except Exception as exc:
+            warnings.warn(f"[HiveLink MQTT] inbound error: {exc!r}")
 
-            # Optional: allow external systems to update presence
-            src_hint = body["from"]
-            if src_hint:
-                self.update_localnode_seen(src_hint, "mqtt")
-
-            # Gate on incumbent
-            if not self.is_incumbent_for(dest_id):
+    async def _listen_socket(self, sock: socket.socket, intf: str) -> None:
+        assert self.loop is not None
+        while self.running:
+            try:
+                packet, _addr = await self.loop.sock_recvfrom(sock, 65535)
+                source, dest, payload = decode_udp_packet(packet)
+                if dest not in ("", self.my_name):
+                    continue
+                self.rx_buffer.append(
+                    {"intf": intf, "data": payload, "from": source, "to": dest, "time": time.time()}
+                )
+            except asyncio.CancelledError:
                 return
+            except Exception as exc:
+                if self.running:
+                    warnings.warn(f"HiveLink {intf} receive error: {exc}")
+                    await asyncio.sleep(0.05)
 
-            payload = hl_proto.PAYLOAD_MODELS[msg_type].model_validate(payload_data)
-            envelope = build_envelope(payload, src=src_hint, dst=dest_id)
-            encoded = encode_message(envelope, payload)
+    def start(self) -> None:
+        self.loop = asyncio.get_running_loop()
+        self.running = True
 
-            sent = False
-            try:
-                if self.use_udp and dest_id in self.nodemap:
-                    sent |= self.send(encoded, dest=dest_id, udp=True)
-            except Exception:
-                pass
-            try:
-                if self.use_meshtastic and dest_id in self.nodemap:
-                    sent |= self.send(encoded, dest=dest_id, meshtastic=True)
-            except Exception:
-                pass
-
-            if not sent:
-                try:
-                    if self.use_udp and self.multicast_group:
-                        self.send(encoded, dest=None, multicast=True)
-                except Exception:
-                    pass
-
-        except Exception as e:
-            warnings.warn(f"[MQTT] inbound error: {e!r}")
-            tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
-            sys.__stderr__.write(tb)
-            sys.__stderr__.flush()
-
-
-    # ---------- Lifecycle ----------
-    def start(self):
         if self.use_udp:
-            print("Interface using UDP")
             self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.udp_sock.setblocking(False)
             self.udp_sock.bind((self.socket_host, self.socket_port))
+            print(f"HiveLink UDP listening on {self.socket_host}:{self.socket_port}")
+            self._listen_tasks.append(self.loop.create_task(self._listen_socket(self.udp_sock, "udp")))
 
             if self.use_multicast:
-                if self.multicast_group == "" or not self.multicast_port:
-                    raise ValueError("Group+port must be specified when using Multicast.")
-                print(f"Interface using UDP Multicast on group {self.multicast_group} port {self.multicast_port}")
+                if not self.multicast_group:
+                    raise ValueError("multicast_group is required when multicast is enabled")
                 self.multicast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
                 self.multicast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 try:
                     self.multicast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-                except AttributeError:
+                except (AttributeError, OSError):
                     pass
                 self.multicast_sock.bind(("", self.multicast_port))
-                self.multicast_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(self.socket_host))
-                mreq = socket.inet_aton(self.multicast_group) + socket.inet_aton(self.socket_host)
+                interface_addr = self.socket_host if self.socket_host not in ("", "0.0.0.0") else "0.0.0.0"
+                mreq = socket.inet_aton(self.multicast_group) + socket.inet_aton(interface_addr)
                 self.multicast_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
                 self.multicast_sock.setblocking(False)
+                self._listen_tasks.append(
+                    self.loop.create_task(self._listen_socket(self.multicast_sock, "multicast"))
+                )
 
         if self.use_meshtastic:
-            print("Interface using Meshtastic")
+            if MeshtasticClient is None:
+                raise RuntimeError("frogtastic is required when the Meshtastic bearer is enabled")
             if not self.radio_port:
-                raise ValueError("Radio port must be specified when using Meshtastic.")
+                raise ValueError("radio_port is required when Meshtastic is enabled")
             self.mesh_client = MeshtasticClient(self.radio_port)
+            self.meshid = self.mesh_client.meshint.getMyNodeInfo()["num"]
 
-        # MQTT after interfaces so we can publish presence
-        self._setup_mqtt()
-
-        self.running = True
-        if self.use_udp:
-            asyncio.create_task(self._listen())
         self.map_mesh_nodes()
-        print("Connected to interfaces")
-        if self.use_meshtastic and self.mesh_client:
-            self.meshid = self.mesh_client.meshint.getMyNodeInfo()['num']
-            print(f"[INIT] My meshtastic ID: {self.meshid}")    
-        payload = NodeHeartbeat(
-            node_id=self.my_name,
-            last_seen_ts=time.time(),
-            node_state=MeshNodeState.ACTIVE,
-        )
-        envelope = build_envelope(payload, src=self.my_name, dst="")
-        self.send(encode_message(envelope, payload), dest="", meshtastic=True, multicast=True, udp=True)
+        self._setup_mqtt()
+        print("HiveLink interfaces started")
 
-    def stop(self):
+    def stop(self) -> None:
         self.running = False
+        for task in self._listen_tasks:
+            task.cancel()
+        self._listen_tasks.clear()
 
-        # MQTT offline notice
-        if self.mqtt_enable and self.mqtt_client is not None:
+        if self.mqtt_client is not None:
             try:
                 if self._mqtt_connected:
-                    self.mqtt_client.publish(f"{self.mqtt_base}/from/{self.my_name}/status", b"offline", qos=1, retain=True)
+                    self.mqtt_client.publish(
+                        f"{self.mqtt_base}/from/{self.my_name}/status",
+                        b"offline",
+                        qos=1,
+                        retain=True,
+                    )
                 self.mqtt_client.loop_stop()
                 self.mqtt_client.disconnect()
             except Exception:
                 pass
-            finally:
-                self.mqtt_client = None
-                self._mqtt_connected = False
+            self.mqtt_client = None
+            self._mqtt_connected = False
 
-        if self.udp_sock:
-            try:
-                self.udp_sock.close()
-            except Exception:
-                pass
-            self.udp_sock = None
-
-        if self.multicast_sock:
-            try:
-                # Best effort drop membership
+        for sock_name in ("udp_sock", "multicast_sock"):
+            sock = getattr(self, sock_name)
+            if sock is not None:
                 try:
-                    mreq = socket.inet_aton(self.multicast_group) + socket.inet_aton(self.socket_host)
-                    self.multicast_sock.setsockopt(socket.IPPROTO_IP, socket.IP_DROP_MEMBERSHIP, mreq)
+                    sock.close()
                 except Exception:
                     pass
-                self.multicast_sock.close()
-            except Exception:
-                pass
-            self.multicast_sock = None
+                setattr(self, sock_name, None)
 
-        if self.mesh_client:
+        if self.mesh_client is not None:
             try:
                 self.mesh_client.meshint.close()
             except Exception:
                 pass
             self.mesh_client = None
+        print("HiveLink interfaces stopped")
 
-        print("Interfaces stopped")
-
-    # ---------- I/O ----------
-    async def _listen(self):
-        print(f"UDP Listening on {self.socket_host}:{self.socket_port}")
-        while self.running:
-            if self.use_udp and self.udp_sock:
-                try:
-                    data, addr = await self.loop.run_in_executor(None, self.udp_sock.recvfrom, 1024)
-                    source, dest, data = decode_udp_packet(data)
-                    if data:
-                        self.rx_buffer.append({"intf": "udp", "data": data, "from": source, "time": time.time()})
-                except Exception as e:
-                    err = str(e)
-                    if "[Errno 11] Resource temporarily unavailable" not in err:
-                        warnings.warn(f"Datalink UDP listen error: {str(e)}")
-
-            if self.multicast_sock:
-                try:
-                    data, addr = await self.loop.run_in_executor(None, self.multicast_sock.recvfrom, 1024)
-                    source, dest, data = decode_udp_packet(data)
-                    if data:
-                        self.rx_buffer.append({"intf": "multicast", "data": data, "from": source, "time": time.time()})
-                except Exception as e:
-                    err = str(e)
-                    if "[Errno 11] Resource temporarily unavailable" not in err:
-                        warnings.warn(f"Datalink Multicast listen error: {str(e)}")
-            await asyncio.sleep(0.1)
-
-    def _publish_to_mqtt(self, intf: str, envelope: MessageEnvelope, payload: OCCIDModel, tstamp: float):
-        if not (self.mqtt_enable and self.mqtt_client and self._mqtt_connected):
-            return
+    def _udp_destination(self, dest: str) -> tuple[str, int]:
         try:
-            topic = self._topic_from_msg(envelope)
-            env = self._json_envelope(intf, envelope, payload, tstamp)
-            self.mqtt_client.publish(topic, env, qos=0, retain=False)
-        except Exception as e:
-            sys.__stderr__.write(f"MQTT publish failed: {e}\n")
-            traceback.print_exc(file=sys.__stderr__)
-            sys.__stderr__.flush()
+            value = self.nodemap[dest]["ip"]
+        except KeyError as exc:
+            raise KeyError(f"HiveLink destination {dest!r} has no static IP mapping") from exc
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            raise ValueError(f"HiveLink nodemap[{dest!r}].ip must be [host, port]")
+        return str(value[0]), int(value[1])
 
     def send(
         self,
         data: bytes,
         dest: Optional[str] = None,
         udp: bool = False,
-        meshtastic:  Optional[bool] = False,
-        multicast:  Optional[bool] = False,
+        meshtastic: bool = False,
+        multicast: bool = False,
     ) -> bool:
-        # UDP and Multicast
+        payload = bytes(data)
         sent = False
 
         try:
             if self.use_udp:
-                if multicast and self.multicast_group != "":
+                if multicast and self.multicast_group:
                     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as send_sock:
-                        send_sock.settimeout(2.0)
-                        send_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(self.socket_host))
-                        send_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 0)
+                        if self.socket_host not in ("", "0.0.0.0"):
+                            send_sock.setsockopt(
+                                socket.IPPROTO_IP,
+                                socket.IP_MULTICAST_IF,
+                                socket.inet_aton(self.socket_host),
+                            )
                         send_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-                        encdat = encode_udp_packet(source=self.my_name, destination=dest, payload=data)
-                        send_sock.sendto(encdat, (self.multicast_group, self.multicast_port))
+                        send_sock.sendto(
+                            encode_udp_packet(self.my_name, dest, payload),
+                            (self.multicast_group, self.multicast_port),
+                        )
                         sent = True
-                elif dest in self.nodemap and udp:
+                elif udp and dest:
+                    addr = self._udp_destination(dest)
                     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as send_sock:
-                        send_sock.settimeout(2.0)
-                        addr = self.nodemap[dest]["ip"]
-                        encdat = encode_udp_packet(source=self.my_name, destination=dest, payload=data)
-                        send_sock.sendto(encdat, tuple(addr))
-                        sent = True
-        except Exception as e:
-            warnings.warn(f"Datalink UDP Send failed: {str(e)}")
+                        send_sock.sendto(encode_udp_packet(self.my_name, dest, payload), addr)
+                    sent = True
+        except Exception as exc:
+            warnings.warn(f"HiveLink UDP send failed: {exc}")
             return False
 
-        # Meshtastic
         try:
-            if self.use_meshtastic and self.mesh_client and meshtastic:
-                dest_meshid = "^all" if dest is None or dest == "" else self.nodemap[dest]["meshid"]
+            if self.use_meshtastic and self.mesh_client is not None and meshtastic:
+                destination_id = "^all" if not dest else self.nodemap[dest]["meshid"]
                 self.mesh_client.meshint.sendData(
-                    data,
-                    destinationId=dest_meshid,
+                    payload,
+                    destinationId=destination_id,
                     portNum=self.link_port,
                     channelIndex=self.meshtastic_channel,
                     hopLimit=None,
                     wantAck=True,
                 )
                 sent = True
-        except Exception as e:
-            warnings.warn(f"Datalink Meshtastic send failed: {str(e)}")
+        except Exception as exc:
+            warnings.warn(f"HiveLink Meshtastic send failed: {exc}")
             return False
 
         return sent
 
+    def send_model(
+        self,
+        model: OCCIDModel,
+        dest: str,
+        *,
+        udp: bool = True,
+        meshtastic: bool = False,
+        multicast: bool = False,
+    ) -> bool:
+        """Encode and send one OCCID model to a HiveLink node."""
+        return self.send(
+            encode_message(model),
+            dest=dest,
+            udp=udp,
+            meshtastic=meshtastic,
+            multicast=multicast,
+        )
+
+    def _publish_to_mqtt(self, msg: Dict[str, Any], model: OCCIDModel) -> None:
+        if not (self.mqtt_enable and self.mqtt_client and self._mqtt_connected):
+            return
+        try:
+            topic = self._topic_from_model(str(msg["from"]), model)
+            body = self._json_model(
+                str(msg["intf"]),
+                str(msg["from"]),
+                model,
+                float(msg.get("time", time.time())),
+            )
+            self.mqtt_client.publish(topic, body, qos=0, retain=False)
+        except Exception as exc:
+            sys.__stderr__.write(f"HiveLink MQTT publish failed: {exc}\n")
+            traceback.print_exc(file=sys.__stderr__)
+            sys.__stderr__.flush()
 
     def receive(self) -> List[Dict[str, Any]]:
-        # Pull from Meshtastic mailbox
         if self.mesh_client is not None:
             try:
                 for msg in self.mesh_client.checkMail():
-                    if msg.get("port") == self.link_port:
-                        try:
-                            senderid_hex = msg.get("senderid", "").lstrip("!")
-                            senderid = int(senderid_hex, 16) if senderid_hex else 0
-                            source = self.meshmap.get(senderid, str(senderid))
-                        except Exception:
-                            source = "unknown"
-                        self.rx_buffer.append(
-                            {"intf": "meshtastic", "data": msg["data"], "from": source, "time": msg.get("time", time.time())}
-                        )
-            except Exception as e:
-                warnings.warn(f"Meshtastic receive error: {e}")
+                    if msg.get("port") != self.link_port:
+                        continue
+                    try:
+                        sender_hex = str(msg.get("senderid", "")).lstrip("!")
+                        sender_num = int(sender_hex, 16) if sender_hex else 0
+                        source = self.meshmap.get(sender_num, str(sender_num))
+                    except Exception:
+                        source = "unknown"
+                    self.rx_buffer.append(
+                        {
+                            "intf": "meshtastic",
+                            "data": msg["data"],
+                            "from": source,
+                            "to": self.my_name,
+                            "time": msg.get("time", time.time()),
+                        }
+                    )
+            except Exception as exc:
+                warnings.warn(f"HiveLink Meshtastic receive error: {exc}")
 
-        # Drain buffer (single shot)
         messages = self.rx_buffer.copy()
         self.rx_buffer.clear()
-
-        # Presence update and optional MQTT publish (decoded here; the caller still gets raw)
         for msg in messages:
-            self.update_localnode_seen(msg["from"], msg["intf"], ts=msg.get("time", time.time()))
-            envelope, payload = decode_message(msg["data"])
-            self._publish_to_mqtt(msg["intf"], envelope, payload, msg.get("time", time.time()))
-
+            self.update_localnode_seen(
+                str(msg["from"]),
+                str(msg["intf"]),
+                ts=float(msg.get("time", time.time())),
+            )
+            try:
+                model = decode_message(msg["data"])
+            except Exception:
+                continue
+            self._publish_to_mqtt(msg, model)
         return messages
+
+    def receive_models(self) -> List[Dict[str, Any]]:
+        """Receive frames with canonical OCCID models already decoded."""
+        decoded: List[Dict[str, Any]] = []
+        for msg in self.receive():
+            model = decode_message(msg["data"])
+            decoded.append({**msg, "model": model})
+        return decoded
 
 
 def load_nodes_map(path: str = "nodes.json") -> Dict[str, Any]:
-    with open(path, "r") as file:
-        return json.loads(file.read())
+    with open(path, "r", encoding="utf-8") as file:
+        return json.load(file)
