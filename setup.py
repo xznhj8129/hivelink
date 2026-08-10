@@ -26,14 +26,9 @@ setup(
         "pydantic>=2",
     ],
     extras_require={
-        "mqtt": ["paho-mqtt>=1.6"],
         "meshtastic": ["frogtastic"],
         "cli": ["prompt-toolkit"],
-        "all": [
-            "paho-mqtt>=1.6",
-            "frogtastic",
-            "prompt-toolkit",
-        ],
+        "all": ["frogtastic", "prompt-toolkit"],
     },
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",
