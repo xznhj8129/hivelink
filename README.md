@@ -81,7 +81,15 @@ for message in link.receive_models():
     print(message["from"], type(message["model"]).__name__)
 ```
 
-`frogtastic` is only required when the Meshtastic bearer is actually enabled. A direct UDP/IP installation does not require it.
+The default package install contains only the direct core. Optional bearer dependencies are explicit extras:
+
+```bash
+pip install -e .[mqtt]
+pip install -e .[meshtastic]
+pip install -e .[all]
+```
+
+Conqueror Frog does not install those extras for the direct-IP path.
 
 ## Bearers
 
@@ -113,6 +121,6 @@ Sigma / control system
 
 MPFC's MQTT bus is private node-local IPC. Exposing that broker or its topic names to Sigma bypasses HiveLink and is not the OCCID-native system interface.
 
-## Examples
+## Example
 
-`example_node.py` is the small interactive node example. Older MAVLink/INAV direct-control examples are historical integration experiments; they are not the architecture for OCCID-native autonomous tasking and should not be treated as Conqueror Frog control-path examples.
+`example_node.py` is the maintained interactive OCCID node example for direct UDP, with optional Meshtastic use when that extra is installed.
