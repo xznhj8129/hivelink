@@ -1,81 +1,50 @@
-"""Hivelink OCCID message encoding.
+"""HiveLink OCCID payload encoding.
 
-Usage:
-python3 - <<'PY'
-from hivelink.protocol import build_envelope, encode_message, decode_message
-from occid.schema import HumanTextMessage
+HiveLink is a delivery layer, not a second semantic or serialization system.
+The payload placed inside a HiveLink delivery frame is therefore exactly the
+canonical transient encoding produced by ``OCCIDModel.encode()``. Receivers use
+``occid.decode_model()`` to recover the concrete model by its permanent OCCID
+model ID.
 
-payload = HumanTextMessage(sender_id="node1", destination_id="node2", message="hello")
-packet = encode_message(build_envelope(payload, src="node1", dst="node2"), payload)
-envelope, decoded = decode_message(packet)
-print(envelope.msg_type, decoded.message)
-PY
+Source/destination addressing and bearer mechanics belong to the HiveLink
+delivery frame (see ``hivelink.datalinks``), not to an invented parallel
+message ontology.
 """
 
-from time import time
-from uuid import uuid4
+from __future__ import annotations
 
-import msgpack
-import occid.schema as occid_schema
-from occid.schema import MessageEnvelope, OCCIDModel
+from occid import OCCIDModel, decode_model
 
 
 PROTOCOL_NAME = "hivelink-occid"
-PROTOCOL_VERSION = (1, 0, 0)
-
-PAYLOAD_MODELS: dict[str, type[OCCIDModel]] = {
-    name: model
-    for name in occid_schema.__all__
-    for model in [getattr(occid_schema, name)]
-    if OCCIDModel in getattr(model, "__mro__", ()) and model is not OCCIDModel
-}
+PROTOCOL_VERSION = (2, 0, 0)
 
 
 def message_type(payload: OCCIDModel) -> str:
-    return payload.__class__.__name__
+    """Return the human-readable OCCID model name for diagnostics only."""
+    if not isinstance(payload, OCCIDModel):
+        raise TypeError(f"expected OCCIDModel, got {type(payload).__name__}")
+    return type(payload).__name__
 
 
-def build_envelope(
-    payload: OCCIDModel,
-    src: str,
-    dst: str,
-    *,
-    msg_id: str | None = None,
-    ts: float | None = None,
-    **kwargs,
-) -> MessageEnvelope:
-    return MessageEnvelope(
-        msg_id=msg_id if msg_id is not None else uuid4().hex,
-        msg_type=message_type(payload),
-        src=src,
-        dst=dst,
-        ts=ts if ts is not None else time(),
-        **kwargs,
-    )
+def encode_message(payload: OCCIDModel) -> bytes:
+    """Encode one OCCID model using OCCID's canonical transient wire profile."""
+    if not isinstance(payload, OCCIDModel):
+        raise TypeError(f"expected OCCIDModel, got {type(payload).__name__}")
+    return payload.encode()
 
 
-def encode_message(envelope: MessageEnvelope, payload: OCCIDModel) -> bytes:
-    packet = {
-        "envelope": envelope.model_dump(mode="json", exclude_none=True),
-        "payload": payload.model_dump(mode="json", exclude_none=True),
-    }
-    return msgpack.packb(packet, use_bin_type=True)
-
-
-def decode_message(data: bytes) -> tuple[MessageEnvelope, OCCIDModel]:
-    packet = msgpack.unpackb(data, raw=False)
-    envelope = MessageEnvelope.model_validate(packet["envelope"])
-    payload_model = PAYLOAD_MODELS[envelope.msg_type]
-    payload = payload_model.model_validate(packet["payload"])
-    return envelope, payload
+def decode_message(data: bytes) -> OCCIDModel:
+    """Decode one canonical OCCID payload without prior knowledge of its type."""
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise TypeError(f"expected bytes-like payload, got {type(data).__name__}")
+    return decode_model(bytes(data))
 
 
 __all__ = [
     "PROTOCOL_NAME",
     "PROTOCOL_VERSION",
-    "PAYLOAD_MODELS",
     "message_type",
-    "build_envelope",
     "encode_message",
     "decode_message",
 ]
