@@ -95,11 +95,11 @@ pip install -e .[cli]
 pip install -e .[all]
 ```
 
-Conqueror Frog installs only the direct core for its reference IP path.
+Reference IP deployments can install only the direct core.
 
-## Relationship to Conqueror Frog
+## Relationship to consuming systems
 
-Conqueror Frog is a HiveLink client, not the owner of HiveLink's communications roadmap.
+HiveLink is an independent delivery layer for OCCID traffic between control systems and independently deployed nodes. It is not owned by a particular consuming application.
 
 For an autonomous MPFC node the intended boundary is:
 
