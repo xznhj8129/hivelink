@@ -1,5 +1,7 @@
 # HiveLink
 
+> **VERSION: `0.0.1`.** HiveLink follows the Conqueror Frog project-wide version invariant. Its package and protocol versions remain `0.0.1` until the project owner explicitly authorizes a version change.
+
 HiveLink delivers OCCID between independently deployed nodes.
 
 The smallest valid deployment is intentionally boring:
@@ -32,7 +34,7 @@ decoded = decode_message(encoded)   # occid.decode_model()
 assert type(decoded) is NetworkAddress
 ```
 
-The payload inside a HiveLink frame is exactly OCCID's canonical transient encoding: schema version, permanent model ID, and named fields.
+The payload inside a HiveLink frame is exactly OCCID's transient encoding: schema version, live model ID, and named fields.
 
 HiveLink delivery addressing remains in the HiveLink bearer frame. For UDP the current frame is:
 
