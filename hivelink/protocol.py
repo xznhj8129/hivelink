@@ -17,7 +17,7 @@ from occid import OCCIDModel, decode_model
 
 
 PROTOCOL_NAME = "hivelink-occid"
-PROTOCOL_VERSION = (2, 0, 0)
+PROTOCOL_VERSION = (0, 0, 1)
 
 
 def message_type(payload: OCCIDModel) -> str:
