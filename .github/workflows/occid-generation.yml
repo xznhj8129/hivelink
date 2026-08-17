@@ -1,0 +1,42 @@
+name: occid-generation
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out consumer
+        uses: actions/checkout@v4
+        with:
+          path: consumer
+
+      - name: Check out OCCID
+        uses: actions/checkout@v4
+        with:
+          repository: xznhj8129/occid
+          path: occid
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install OCCID
+        run: python -m pip install -e ./occid
+
+      - name: Regenerate OCCID
+        working-directory: occid
+        run: |
+          python generate.py
+          git diff --exit-code
+
+      - name: Regenerate consumer OCCID contract
+        working-directory: consumer
+        run: |
+          python -m occid.contract generate .
+          git diff --exit-code -- OCCID_CONTRACT

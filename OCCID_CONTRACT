@@ -1,5 +1,12 @@
 {
   "format": 1,
   "global_hash": "6bb178a4c95e736433cd426fb17831787241a7427b71d1ae35939f65e866fba2",
-  "symbols": {}
+  "symbols": {
+    "HumanTextMessage": "ff5924f8c90cc7513759f37c17b2ed6f34012fea7ed94ebe86e184348f18c33c",
+    "IdentifierType": "8e0d403072dfb653f55cfbb4ecef6e488d83a25ed5009228c0fd81937b216aa7",
+    "MessagePriority": "1e546b87acb5030bb34903c5df25929215813fbcea9a8c497c4a181fff202961",
+    "MessageTarget": "afe3261be578cc685e298d1ee4f03bf7af9778e2a4b26f9f75791a0831634820",
+    "StringID": "1368ab55268d6f7c63feed98cae040225101bcc1159305ff8e75d19eba4065f5",
+    "Timestamp": "05f84d1e1829653d058f1094d45585a071101e37a3ee5d5c7188b5df9ec75216"
+  }
 }
