@@ -1,26 +1,24 @@
 # HiveLink
 
-> **VERSION: `0.0.1`.** HiveLink follows the Conqueror Frog project-wide version invariant. Its package and protocol versions remain `0.0.1` until the project owner explicitly authorizes a version change.
+> **VERSION: `0.0.1`.** HiveLink package/protocol version remains independent of OCCID schema evolution.
 
 HiveLink delivers OCCID between independently deployed nodes.
+
+**OCCID is the data model. HiveLink is delivery.** HiveLink does not define a competing command/state/network ontology and does not own OCCID structural compatibility.
+
+## Minimum useful deployment
 
 The smallest valid deployment is intentionally boring:
 
 ```text
-control     192.168.0.220:5555
-    |
-    | direct UDP/IP
-    v
-autonomous  192.168.0.230:5555
+control node <---- direct UDP/IP ----> field/autonomous node
 ```
 
-A static node map and direct packet send/receive are a permanent supported baseline. 802.11s, BATMAN, HaLow, additional radio bearers, LTE, Starlink, VPNs, multi-bearer policy, constrained profiles, fragmentation, store-and-forward, and other communications work may be added behind the same interface without changing application semantics above it.
+A static node map plus direct packet send/receive is a permanent supported baseline. More advanced underlays/bearers - 802.11s, BATMAN, HaLow, Meshtastic/LoRa, LTE, satellite, VPNs, multi-bearer policy, constrained profiles, fragmentation, store-and-forward, etc. - may evolve behind the same application boundary.
 
-**OCCID is the data model. HiveLink is delivery.** HiveLink does not define a competing command/state/network ontology. Operationally meaningful link, node, network, topology, reachability, quality, delivery, and communications observations are represented with OCCID models when another component needs to know, store, display, or reason about them.
+Applications above HiveLink should not change semantic behavior merely because the bearer changes.
 
-HiveLink is still experimental. The direct-IP baseline is deliberately kept small so applications do not need the entire communications roadmap merely to use the correct boundary.
-
-## OCCID wire payload
+## OCCID payload
 
 HiveLink does not wrap OCCID in a second class-name schema.
 
@@ -28,22 +26,26 @@ HiveLink does not wrap OCCID in a second class-name schema.
 from hivelink.protocol import encode_message, decode_message
 from occid import AddressKind, NetworkAddress
 
-payload = NetworkAddress(kind=AddressKind.IPV4, value="192.168.0.230", port=5555)
-encoded = encode_message(payload)   # OCCIDModel.encode()
-decoded = decode_message(encoded)   # occid.decode_model()
+payload = NetworkAddress(kind=AddressKind.IPV4, value="192.0.2.10", port=5555)
+encoded = encode_message(payload)
+decoded = decode_message(encoded)
 assert type(decoded) is NetworkAddress
 ```
 
-The payload inside a HiveLink frame is exactly OCCID's transient encoding: schema version, live model ID, and named fields.
+The payload inside a HiveLink frame is OCCID's transient encoding:
 
-HiveLink delivery addressing remains in the HiveLink bearer frame. For UDP the current frame is:
+```text
+{
+  model_id,
+  fields
+}
+```
 
-| payload length | CRC16 | source node | destination node | OCCID payload |
-|---|---|---|---|---|
+The permanent model ID identifies the concrete OCCID model. Structural compatibility belongs to each consumer's generated `OCCID_CONTRACT`; no OCCID schema version is carried in every HiveLink payload.
 
-That addressing is delivery machinery, not a replacement for OCCID `Node`, `NetworkAddress`, `Link`, `DeliveryReceipt`, or other communications models.
+HiveLink source/destination addressing remains in the delivery frame. That delivery addressing is machinery, not a replacement for OCCID `Node`, `NetworkAddress`, `Link`, delivery evidence, or other operational communications models.
 
-## Minimal direct-IP use
+## Direct-IP use
 
 `DatalinkInterface` is asynchronous because receivers run on the caller's event loop:
 
@@ -53,32 +55,28 @@ import asyncio
 from hivelink.datalinks import DatalinkInterface
 from occid import AddressKind, NetworkAddress
 
-
 async def main():
     link = DatalinkInterface(
         use_udp=True,
-        socket_host="192.168.0.220",
+        socket_host="127.0.0.1",
         socket_port=5555,
         my_name="control",
         nodemap={
-            "control": {"ip": ["192.168.0.220", 5555]},
-            "uav1": {"ip": ["192.168.0.230", 5555]},
+            "control": {"ip": ["127.0.0.1", 5555]},
+            "uav1": {"ip": ["127.0.0.1", 5556]},
         },
     )
     link.start()
     try:
-        payload = NetworkAddress(
-            kind=AddressKind.IPV4,
-            value="192.168.0.230",
-            port=5555,
+        link.send_model(
+            NetworkAddress(kind=AddressKind.IPV4, value="127.0.0.1", port=5556),
+            "uav1",
         )
-        link.send_model(payload, "uav1")
         await asyncio.sleep(0.1)
         for message in link.receive_models():
             print(message["from"], type(message["model"]).__name__)
     finally:
         link.stop()
-
 
 asyncio.run(main())
 ```
@@ -89,7 +87,7 @@ asyncio.run(main())
 - UDP multicast;
 - Meshtastic when the optional `frogtastic` dependency is installed.
 
-The default package install contains only the direct core. Optional extras are explicit:
+Optional extras are explicit:
 
 ```bash
 pip install -e .[meshtastic]
@@ -101,22 +99,24 @@ Reference IP deployments can install only the direct core.
 
 ## Relationship to consuming systems
 
-HiveLink is an independent delivery layer for OCCID traffic between control systems and independently deployed nodes. It is not owned by a particular consuming application.
+HiveLink is independent delivery infrastructure, not owned by Sigma or MPFC.
 
-For an autonomous MPFC node the intended boundary is:
+For an autonomous MPFC node:
 
 ```text
-Sigma / control system
+Sigma / control
     -> OCCID
     -> HiveLink
     -> network
     -> HiveLink
-    -> MPFC node-local OCCID bridge
-    -> MPFC private IPC
+    -> MPFC
+    -> private node-local IPC
     -> local execution / endpoint adapters
 ```
 
-MPFC's MQTT bus is private node-local IPC. Exposing that broker or its topic names to Sigma bypasses HiveLink and is not the OCCID-native system interface.
+MPFC's MQTT broker is private local IPC. Exposing the broker or its topic names to Sigma bypasses the intended HiveLink boundary.
+
+The normal Conqueror Frog Block 1 direct-IP path has been empirically exercised end to end. Advanced communications work remains independent and must not become a prerequisite for unrelated application capability.
 
 ## Example
 
