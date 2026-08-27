@@ -8,6 +8,7 @@ dump.txt
 .syncthing.*
 codex.patch
 hivelink.egg-info
+build/
 mav.parm
 mav.tlog
 mav.tlog.*
