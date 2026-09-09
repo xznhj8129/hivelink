@@ -6,38 +6,25 @@ import asyncio
 from datetime import datetime, timezone
 import json
 import sys
+from uuid import NAMESPACE_URL, uuid5
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 
 from hivelink.datalinks import DatalinkInterface, load_nodes_map
-from occid import (
-    HumanTextMessage,
-    IdentifierType,
-    MessagePriority,
-    MessageTarget,
-    StringID,
-    Timestamp,
-)
+from occid import HumanTextMessage, MessagePriority, Timestamp, UID
 
 session = PromptSession("> ")
 
 
-def sid(value: str) -> StringID:
-    return StringID(id_type=IdentifierType.DB_ID, value=value)
+def uid(value: str) -> UID:
+    """Map a HiveLink node name to a stable OCCID UID."""
+    return UID(root=uuid5(NAMESPACE_URL, f"hivelink:{value}").bytes)
 
 
 def timestamp_now() -> Timestamp:
     now = datetime.now(timezone.utc)
-    return Timestamp(
-        seconds=now.second + now.microsecond / 1_000_000.0,
-        minutes=now.minute,
-        hours=now.hour,
-        day=now.day,
-        month=now.month,
-        year=now.year,
-        tz=0,
-    )
+    return Timestamp(utime=now.timestamp(), tz=0)
 
 
 async def send_loop(datalinks: DatalinkInterface, my_name: str):
@@ -67,17 +54,17 @@ async def send_loop(datalinks: DatalinkInterface, my_name: str):
             text = text[len("/mc "):]
 
         seq += 1
-        src = MessageTarget(target_id=sid(my_name))
-        dst = MessageTarget(target_id=sid(destination))
+        src = uid(my_name)
+        dst = uid(destination)
         payload = HumanTextMessage(
             src=src,
             dst=dst,
             ts=timestamp_now(),
             priority=MessagePriority.ROUTINE,
             seq=seq,
-            sender_id=sid(my_name),
+            sender_uid=src,
             sender_name=my_name,
-            destination_id=sid(destination),
+            destination_uid=dst,
             message=text,
             targets=[dst],
         )
