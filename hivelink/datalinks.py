@@ -6,7 +6,7 @@ import json
 import socket
 import time
 import warnings
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import crcmod
 import msgpack
@@ -78,6 +78,7 @@ class DatalinkInterface:
         socket_host: str = "0.0.0.0",
         socket_port: int = 5555,
         my_name: str = "",
+        my_names: Optional[Iterable[str]] = None,
         my_id: int = 0,
         nodemap: Optional[Dict[str, Dict[str, Any]]] = None,
         multicast_group: str = "",
@@ -93,6 +94,10 @@ class DatalinkInterface:
         self.use_udp = bool(use_udp)
         self.use_multicast = bool(use_multicast)
         self.my_name = str(my_name)
+        # Additional accepted destination names. SDK-configured nodes address
+        # peers by canonical node UID text while the deployment may still use
+        # short bearer names, so a receiver may accept both.
+        self.my_names = {self.my_name, *[str(name) for name in (my_names or ())]}
         self.socket_host = str(socket_host)
         self.socket_port = int(socket_port)
         self.udp_sock: socket.socket | None = None
@@ -152,7 +157,7 @@ class DatalinkInterface:
             try:
                 packet, _addr = await self.loop.sock_recvfrom(sock, 65535)
                 source, dest, payload = decode_udp_packet(packet)
-                if dest not in ("", self.my_name):
+                if dest not in ("", *self.my_names):
                     continue
                 self.rx_buffer.append(
                     {
